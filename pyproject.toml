@@ -1,0 +1,85 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "mitosis"
+version = "0.1.0"
+description = "Reproduce Machine Learning experiments easily"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+keywords = ["Machine Learning", "Science", "Mathematics", "Experiments"]
+authors = [
+  {email = "jacob.stevens.haas@gmail.com", name = "Jake Stevens-Haas"}
+]
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Programming Language :: Python",
+  "Framework :: Jupyter",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Natural Language :: English",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: SQL",
+  "Topic :: Documentation",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Software Development :: Testing",
+  "Topic :: Software Development :: Version Control :: Git",
+  "Topic :: Text Processing :: Markup",
+]
+
+dependencies = [
+  "GitPython",
+  "ipykernel",
+  "nbconvert",
+  "nbclient",
+  "nbformat",
+  "numpy",
+  "pandas",
+  "papermill",
+  "sqlalchemy",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest >= 6.0.0",
+  "pytest-cov",
+  "flake8",
+  "flake8-comprehensions>=3.1.0",
+  "black",
+  "coverage",
+  "pre-commit",
+  "sphinx",
+  "codecov"
+]
+
+[project.urls]
+homepage = "https://github.com/Jake-Stevens-Haas/mitosis"
+
+[tool.black]
+line-length = 88
+extend-exclude = '''
+/(
+    \.git
+  | \.mypy_cache
+  | \.venv
+  | .vscode
+  | version.py
+  | build
+  | dist
+  | env
+)/
+'''
+
+[tool.pytest.ini_options]
+filterwarnings = [
+  "ignore::RuntimeWarning",
+  "ignore::UserWarning",]
+addopts = '-m "not slow"'
+markers = ["slow"]
