@@ -4,7 +4,7 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "mitosis"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Reproduce Machine Learning experiments easily"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -33,7 +33,6 @@ classifiers = [
   "Topic :: Software Development :: Version Control :: Git",
   "Topic :: Text Processing :: Markup",
 ]
-
 dependencies = [
   "GitPython",
   "ipykernel",
