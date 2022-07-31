@@ -30,7 +30,7 @@ from sqlalchemy import String
 from sqlalchemy import Table
 from sqlalchemy import update
 
-REPO = git.Repo(Path(__file__).parent.parent.parent)
+REPO = git.Repo(Path.cwd())
 
 
 def trials_columns():
