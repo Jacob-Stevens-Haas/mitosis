@@ -2,6 +2,7 @@ import logging
 import re
 import sys
 import warnings
+from collections import namedtuple
 from collections import OrderedDict
 from datetime import datetime
 from datetime import timezone
@@ -45,20 +46,14 @@ def trials_columns():
     ]
 
 
-def trial_types():
-    return [
-        Column("id", Integer, primary_key=True),
-        Column("short_name", String, unique=True),
-        Column("prob_params", String, unique=True),
-    ]
-
-
 def variant_types():
     return [
-        Column("variant", Integer, primary_key=True),
-        Column("short_name", String, unique=True),
-        Column("sim_params", String, unique=True),
+        Column("name", String, primary_key=True),
+        Column("params", String, unique=True),
     ]
+
+
+Parameter = namedtuple("Parameter", ["id_name", "arg_name", "vals"])
 
 
 class DBHandler(logging.Handler):
@@ -126,31 +121,37 @@ def _init_logger(trial_log, table_name, debug):
     return exp_logger, db_h.log_table
 
 
-def _init_id_variant_tables(trial_log):
+def _init_variant_table(trial_log, param: Parameter):
     eng = create_engine("sqlite:///" + str(trial_log))
     md = MetaData()
-    id_table = Table("trial_types", md, *trial_types())
-    var_table = Table("variant_types", md, *variant_types())
+    var_table = Table(f"variant_{param.arg_name}", md, *variant_types())
     inspector = inspection.inspect(eng)
-    if not inspector.has_table("trial_types") and not inspector.has_table(
-        "variant_types"
-    ):
+    if not inspector.has_table(f"variant_{param.arg_name}"):
         md.create_all(eng)
-    return id_table, var_table
+    return var_table
 
 
-def _id_variant_iteration(
-    trial_log,
-    trials_table,
-    *,
-    var_table,
-    sim_params,
-    id_table,
-    prob_params,
-):
-    """Identify, from the db_log, which trial id and variant the current
-    problem matches, then give the iteration.  If no matches are found,
-    increment id or variant appropriately.
+def _verify_variant_name(trial_db, param: Parameter):
+    """Check for conflicts and register variant name in parameter table"""
+    eng = create_engine("sqlite:///" + str(trial_db))
+    md = MetaData()
+    tb = Table(f"variant_{param.arg_name}", md, *variant_types())
+    vals = OrderedDict({k: v for k, v in sorted(param.vals.items())})
+    df = pd.read_sql(select(tb), eng)
+    ind_equal = df.loc[:, "params"] == str(vals)
+    if ind_equal.sum() == 0:
+        stmt = insert(tb, values={"name": param.id_name, "params": str(vals)})
+        eng.execute(stmt)
+    elif df.loc[ind_equal, "name"].iloc[0] != param.id_name:
+        raise RuntimeError(
+            f"Parameter name {param.id_name} "
+            f"is stored with different values in {trial_db}, {tb}"
+        )
+    # Otherwise, parameter has already been registered and no conflicts
+
+
+def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
+    """Identify the iteration for this exact variant of the trial
 
     Args:
         trial_log (path-like): location of the trial log database
@@ -165,44 +166,12 @@ def _id_variant_iteration(
             in the experiment
     """
     eng = create_engine("sqlite:///" + str(trial_log))
-    sim_params = dict(sim_params)
-    prob_params = dict(prob_params)
-
-    def lookup_or_add_params(tb, cols, params, index, lookup_col):
-        params = OrderedDict({k: v for k, v in sorted(dict(params).items())})
-        df = pd.read_sql(select(tb), eng)
-        ind_equal = df.loc[:, lookup_col] == str(params)
-        if ind_equal.sum() == 0:
-            new_val = 1 if df.empty else df[index].max() + 1
-            stmt = insert(tb, values={index: int(new_val), lookup_col: str(params)})
-            eng.execute(stmt)
-            return new_val, True
-        else:
-            return df.loc[ind_equal, index].iloc[0], False
-
-    trial_id, new_id = lookup_or_add_params(
-        id_table, trial_types(), prob_params, "id", "prob_params"
-    )
-    variant, new_var = lookup_or_add_params(
-        var_table, variant_types(), sim_params, "variant", "sim_params"
-    )
-    if new_var or new_id:
-        iteration = 1
+    stmt = select(trials_table).where(trials_table.c.variant == master_variant)
+    df = pd.read_sql(stmt, eng)
+    if df.empty:
+        return 1
     else:
-        stmt = select(trials_table).where(
-            (trials_table.c.id == int(trial_id))
-            & (trials_table.c.variant == int(variant))
-        )
-        df = pd.read_sql(stmt, eng)
-        if df.empty:
-            # an interruption must have occurred in a previous trial
-            # after trial_id and variant were created, but before
-            # actual results were logged
-            iteration = 1
-        else:
-            iteration = df["iteration"].max() + 1
-
-    return trial_id, variant, iteration
+        return df["iteration"].max() + 1
 
 
 def run(
@@ -210,8 +179,7 @@ def run(
     debug=False,
     *,
     logfile="trials.db",
-    prob_params=None,
-    sim_params=None,
+    params: List[Parameter] = None,
     trials_folder=Path(__file__).absolute().parent / "trials",
     output_extension: str = "html",
     matplotlib_dpi: int = 72,
@@ -222,8 +190,8 @@ def run(
         ex: The experiment class to run
         debug (bool): Whether to run in debugging mode or not.
         logfile (str): the database log for trial results
-        prob_params: The parameters ex uses to solve the problem
-        sim_params: The parameters ex uses to generate a problem
+        params: The assigned parameter dictionaries to generate and
+            solve the problem.
         trials_folder (path-like): The folder to store both output and
             logfile.
         output_extension: what output type to produce using nbconvert.
@@ -237,18 +205,19 @@ def run(
             "untracked files."
         )
     trial_db = Path(trials_folder).absolute() / logfile
-    exp_logger, trials_table = _init_logger(trial_db, "trials", debug)
-    id_table, var_table = _init_id_variant_tables(trial_db)
-    trial, variant, iteration = _id_variant_iteration(
-        trial_db,
-        trials_table,
-        sim_params=sim_params,
-        var_table=var_table,
-        prob_params=prob_params,
-        id_table=id_table,
+    exp_logger, trials_table = _init_logger(trial_db, f"trials_{ex.name}", debug)
+    for param in params:
+        _init_variant_table(trial_db, param)
+        _verify_variant_name(trial_db, param)
+    id_names = [param.id_name for param in params]
+    arg_names = [param.arg_name for param in params]
+    master_variant = "-".join(
+        [x for _, x in sorted(zip(arg_names, id_names), key=lambda pair: pair[0])]
     )
+
+    iteration = _id_variant_iteration(trial_db, trials_table, master_variant)
     debug_suffix = "_" + "".join(np.random.choice(list("0123456789abcde"), 6))
-    new_filename = f"trial{trial}_{variant}_{iteration}"
+    new_filename = f"trial{ex.name}_{master_variant}_{iteration}"
     if debug:
         new_filename += debug_suffix
     if output_extension is None:
@@ -260,8 +229,7 @@ def run(
     commit = REPO.head.commit.hexsha
     exp_logger.info(
         "trial entry: insert"
-        + f"--{trial}"
-        + f"--{variant}"
+        + f"--{master_variant}"
         + f"--{iteration}"
         + f"--{commit}"
         + "--"
@@ -270,35 +238,20 @@ def run(
     )
     utc_now = datetime.now(timezone.utc)
     cpu_now = process_time()
-    if isinstance(ex, type):
-        log_msg = (
-            f"Running experiment {ex.__name__}, trial {trial}, simulation type"
-            f" {variant} at time: "
-            + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
-            + f".  Current repo hash: {commit}"
-        )
-    else:
-        log_msg = (
-            f"Running experiment {ex.name}, trial {trial}, simulation type"
-            f" {variant} at time: "
-            + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
-            + f".  Current repo hash: {commit}"
-        )
+    log_msg = (
+        f"Running experiment {ex.name}, simulation variant {master_variant}, "
+        f"iteration {iteration} at time: "
+        + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
+        + f".  Current repo hash: {commit}"
+    )
     if debug:
         log_msg += ".  In debugging mode."
     exp_logger.info(log_msg)
 
-    if isinstance(ex, type):
-        nb, metrics = _run_in_notebook_if_possible(
-            ex, sim_params, prob_params, trials_folder, matplotlib_dpi
-        )
-    else:
-        warnings.warn(
-            "Passing an experiment object is deprecated.  Pass an experiment"
-            " class, with sim_params, and prob_params separately"
-        )
-        nb = None
-        metrics = ex.run()["metrics"]
+    run_args = {param.arg_name: param.vals for param in params}
+    nb, metrics = _run_in_notebook_if_possible(
+        ex, run_args, trials_folder, matplotlib_dpi
+    )
 
     utc_now = datetime.now(timezone.utc)
     exp_logger.info(
@@ -314,8 +267,7 @@ def run(
         warnings.warn("Logging trial and mock filename, but no file created")
     exp_logger.info(
         "trial entry: update"
-        + f"--{trial}"
-        + f"--{variant}"
+        + f"--{master_variant}"
         + f"--{iteration}"
         + f"--{commit}"
         + f"--{cpu_time}"
@@ -325,9 +277,7 @@ def run(
     return None
 
 
-def _run_in_notebook_if_possible(
-    ex: type, sim_params, prob_params, trials_folder, matplotlib_dpi=72
-):
+def _run_in_notebook_if_possible(ex: type, run_args, trials_folder, matplotlib_dpi=72):
     mod_name = ex.__module__
     code = (
         "import importlib\n"
@@ -337,8 +287,7 @@ def _run_in_notebook_if_possible(
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
         f"experiment_module = importlib.import_module('{mod_name}')\n"
         f"experiment_class = experiment_module.{ex.__name__}\n"
-        f"sim_params = {sim_params}\n"
-        f"prob_params = {prob_params}\n"
+        f"args = {run_args}\n"
         "ex = experiment_class(**sim_params, **prob_params)\n"
         "print('Imported ' + experiment_class.__name__ +"
         "' from ' + experiment_module.__name__)"
