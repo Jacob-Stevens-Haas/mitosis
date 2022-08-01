@@ -36,9 +36,9 @@ REPO = git.Repo(Path.cwd())
 
 def trials_columns():
     return [
-        Column("id", Integer, primary_key=True),
         Column("variant", Integer, primary_key=True),
         Column("iteration", Integer, primary_key=True),
+        Column("seed", Integer, primary_key=True),
         Column("commit", String, nullable=False),
         Column("cpu_time", Float),
         Column("results", String),
@@ -177,6 +177,7 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
 def run(
     ex: Experiment,
     debug=False,
+    seed=1,
     *,
     logfile="trials.db",
     params: List[Parameter] = None,
@@ -231,6 +232,7 @@ def run(
         "trial entry: insert"
         + f"--{master_variant}"
         + f"--{iteration}"
+        + f"--{seed}"
         + f"--{commit}"
         + "--"
         + "--"
@@ -249,9 +251,8 @@ def run(
     exp_logger.info(log_msg)
 
     run_args = {param.arg_name: param.vals for param in params}
-    nb, metrics = _run_in_notebook_if_possible(
-        ex, run_args, trials_folder, matplotlib_dpi
-    )
+    run_args["seed"] = seed
+    nb, metrics, exc = _run_in_notebook(ex, run_args, trials_folder, matplotlib_dpi)
 
     utc_now = datetime.now(timezone.utc)
     exp_logger.info(
@@ -261,56 +262,65 @@ def run(
     )
     cpu_time = process_time() - cpu_now
 
-    if isinstance(ex, type) and new_filename is not None:
+    if new_filename is not None:
         _save_notebook(nb, new_filename, trials_folder, output_extension)
     else:
         warnings.warn("Logging trial and mock filename, but no file created")
+
     exp_logger.info(
         "trial entry: update"
         + f"--{master_variant}"
         + f"--{iteration}"
+        + f"--{seed}"
         + f"--{commit}"
         + f"--{cpu_time}"
         + f"--{metrics}"
         + f"--{new_filename}"
     )
-    return None
+    if exc is not None:
+        raise exc
 
 
-def _run_in_notebook_if_possible(ex: type, run_args, trials_folder, matplotlib_dpi=72):
-    mod_name = ex.__module__
+def _run_in_notebook(ex: type, run_args, trials_folder, matplotlib_dpi=72):
     code = (
         "import importlib\n"
+        "from pathlib import Path\n"
         "import matplotlib as mpl\n"
         "from numpy import array\n"
+        "import importlib\n"
+        "import sys\n"
+        f'mod_path = Path("{ex.__file__}")\n'
+        f'spec = importlib.util.spec_from_file_location("{ex.__name__}", mod_path)\n'
+        "module = importlib.util.module_from_spec(spec)\n"
+        "sys.modules[spec.name] = module\n"
+        "spec.loader.exec_module(module)\n"
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
-        f"experiment_module = importlib.import_module('{mod_name}')\n"
-        f"experiment_class = experiment_module.{ex.__name__}\n"
         f"args = {run_args}\n"
-        "ex = experiment_class(**sim_params, **prob_params)\n"
-        "print('Imported ' + experiment_class.__name__ +"
-        "' from ' + experiment_module.__name__)"
+        f"print('Imported {ex.name} from {ex.__file__}')\n"
+        'print(f"Running {module.__name__}.run() with parameters {args}")\n'
+        'seed = args.pop("seed")\n'
     )
 
     nb = nbformat.v4.new_notebook()
     setup_cell = nbformat.v4.new_code_cell(source=code)
-    run_cell = nbformat.v4.new_code_cell(source="results = ex.run()")
+    run_cell = nbformat.v4.new_code_cell(source="results = module.run(seed, **args)")
     final_cell = nbformat.v4.new_code_cell(source="print(repr(results))")
     nb["cells"] = [setup_cell, run_cell, final_cell]
 
     kernel_name = _create_kernel()
     ep = ExecutePreprocessor(timeout=-1, kernel=kernel_name)
+    exception = None
     try:
         ep.preprocess(nb, {"metadata": {"path": trials_folder}})
-    except nbclient.client.CellExecutionError:
-        pass
+    except nbclient.client.CellExecutionError as exc:
+        exception = exc
     try:
         result_string = nb["cells"][2]["outputs"][0]["text"][:-1]
         metrics = _parse_results(result_string)
     except (IndexError, KeyError):
         metrics = None
-    return nb, metrics
+    return nb, metrics, exception
 
 
 def _create_kernel():
@@ -337,5 +347,5 @@ def _save_notebook(nb, filename, trials_folder, extension):
 
 
 def _parse_results(result_string):
-    match = re.search(r"'metrics': (.*)}", result_string, re.DOTALL)
-    return list(eval(match.group(1)))
+    match = re.search(r"'main': (.*)}", result_string, re.DOTALL)
+    return match.group(1)
