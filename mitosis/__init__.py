@@ -31,7 +31,7 @@ from sqlalchemy import String
 from sqlalchemy import Table
 from sqlalchemy import update
 
-REPO = git.Repo(Path.cwd())
+REPO = git.Repo(Path.cwd(), search_parent_directories=True)
 
 
 def trials_columns():
