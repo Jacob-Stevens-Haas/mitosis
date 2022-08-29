@@ -179,6 +179,7 @@ def run(
     debug=False,
     seed=1,
     *,
+    group=None,
     logfile="trials.db",
     params: List[Parameter] = None,
     trials_folder=Path(__file__).absolute().parent / "trials",
@@ -190,6 +191,9 @@ def run(
     Arguments:
         ex: The experiment class to run
         debug (bool): Whether to run in debugging mode or not.
+        group (str): Trial grouping.  Name a group if desiring to
+            segregate trials using the same experiment code.  ex.run()
+            must take a "group" argument.
         logfile (str): the database log for trial results
         params: The assigned parameter dictionaries to generate and
             solve the problem.
@@ -206,6 +210,9 @@ def run(
             "untracked files."
         )
     trial_db = Path(trials_folder).absolute() / logfile
+    table_name = f"trials_{ex.name}"
+    if group is not None:
+        table_name += f" {group}"
     exp_logger, trials_table = _init_logger(trial_db, f"trials_{ex.name}", debug)
     for param in params:
         _init_variant_table(trial_db, param)
@@ -218,7 +225,10 @@ def run(
 
     iteration = _id_variant_iteration(trial_db, trials_table, master_variant)
     debug_suffix = "_" + "".join(np.random.choice(list("0123456789abcde"), 6))
-    new_filename = f"trial{ex.name}_{master_variant}_{iteration}"
+    new_filename = f"trial_{ex.name}"
+    if group is not None:
+        new_filename += f"_{group}"
+    new_filename += f"_{master_variant}_{iteration}"
     if debug:
         new_filename += debug_suffix
     if output_extension is None:
@@ -252,6 +262,8 @@ def run(
 
     run_args = {param.arg_name: param.vals for param in params}
     run_args["seed"] = seed
+    if group is not None:
+        run_args["group"] = group
     nb, metrics, exc = _run_in_notebook(ex, run_args, trials_folder, matplotlib_dpi)
 
     utc_now = datetime.now(timezone.utc)
