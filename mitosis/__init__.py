@@ -8,7 +8,7 @@ from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 from time import process_time
-from typing import List
+from typing import List, Collection, Mapping
 
 import git
 import nbclient
@@ -136,7 +136,12 @@ def _verify_variant_name(trial_db, param: Parameter):
     eng = create_engine("sqlite:///" + str(trial_db))
     md = MetaData()
     tb = Table(f"variant_{param.arg_name}", md, *variant_types())
-    vals = OrderedDict({k: v for k, v in sorted(param.vals.items())})
+    if isinstance(param.vals, Mapping):
+        vals = OrderedDict({k: v for k, v in sorted(param.vals.items())})
+    elif isinstance(param.vals, Collection):
+        vals = sorted(param.vals)
+    else:
+        vals = param.vals
     df = pd.read_sql(select(tb), eng)
     ind_equal = df.loc[:, "params"] == str(vals)
     if ind_equal.sum() == 0:
