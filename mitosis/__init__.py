@@ -139,7 +139,10 @@ def _verify_variant_name(trial_db, param: Parameter):
     if isinstance(param.vals, Mapping):
         vals = OrderedDict({k: v for k, v in sorted(param.vals.items())})
     elif isinstance(param.vals, Collection):
-        vals = sorted(param.vals)
+        try:
+            vals = sorted(param.vals)
+        except ValueError:
+            vals = param.vals
     else:
         vals = param.vals
     df = pd.read_sql(select(tb), eng)
