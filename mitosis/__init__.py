@@ -307,13 +307,8 @@ def _run_in_notebook(ex: type, run_args, trials_folder, matplotlib_dpi=72):
         "from pathlib import Path\n"
         "import matplotlib as mpl\n"
         "from numpy import array\n"
-        "import importlib\n"
         "import sys\n"
-        f'mod_path = Path("{ex.__file__}")\n'
-        f'spec = importlib.util.spec_from_file_location("{ex.__name__}", mod_path)\n'
-        "module = importlib.util.module_from_spec(spec)\n"
-        "sys.modules[spec.name] = module\n"
-        "spec.loader.exec_module(module)\n"
+        f"importlib.import_module({ex.__name__})\n\n"
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
         f"args = {run_args}\n"
