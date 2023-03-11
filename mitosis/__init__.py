@@ -5,7 +5,7 @@ import sys
 import warnings
 from collections import namedtuple
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
@@ -71,7 +71,7 @@ class Parameter:
     id_name: str
     arg_name: str
     vals: Any
-    modules: List[str]=[]
+    modules: List[str]=field(default_factory=list)
 
 
 def _finalize_param(param: Parameter, folder: Path | str):
