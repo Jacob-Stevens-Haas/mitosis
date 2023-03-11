@@ -71,7 +71,7 @@ class Parameter:
     id_name: str
     arg_name: str
     vals: Any
-    modules: List[str]=None
+    modules: List[str]=[]
 
 
 def _finalize_param(param: Parameter, folder: Path | str):
