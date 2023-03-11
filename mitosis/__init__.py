@@ -1,14 +1,16 @@
 import logging
+import pickle
 import re
 import sys
 import warnings
 from collections import namedtuple
 from collections import OrderedDict
+from dataclasses import dataclass
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 from time import process_time
-from typing import List, Collection, Mapping
+from typing import List, Collection, Mapping, Any
 
 import git
 import nbclient
@@ -53,8 +55,31 @@ def variant_types():
     ]
 
 
-Parameter = namedtuple("Parameter", ["id_name", "arg_name", "vals"])
+@dataclass
+class Parameter:
+    """An experimental parameter
 
+    Arguments:
+        id_name: short name for the variant (particular values) across use cases
+        arg_name: name of arg known to experiment
+        vals: value of the parameter
+        modules: module names required in order to use the values.  Since arguments
+            can only be passed to notebooks as strings, any argument that cannot be
+            simply recreated from its repr will need to be pickled and the containing
+            module imported.
+    """
+    id_name: str
+    arg_name: str
+    vals: Any
+    modules: List[str]=None
+
+
+def _finalize_param(param: Parameter, folder: Path | str):
+    filename = "arg" + "".join(np.random.choice(list("0123456789abcde"), 9)) + ".pickle"
+    location = Path(folder) / filename
+    with open (location, "wb") as fh:
+        pickle.dump(param.vals, fh)
+    return location
 
 class DBHandler(logging.Handler):
     def __init__(
@@ -268,11 +293,7 @@ def run(
         log_msg += ".  In debugging mode."
     exp_logger.info(log_msg)
 
-    run_args = {param.arg_name: param.vals for param in params}
-    run_args["seed"] = seed
-    if group is not None:
-        run_args["group"] = group
-    nb, metrics, exc = _run_in_notebook(ex, run_args, trials_folder, matplotlib_dpi)
+    nb, metrics, exc = _run_in_notebook(ex, seed, group, params, trials_folder, matplotlib_dpi)
 
     utc_now = datetime.now(timezone.utc)
     exp_logger.info(
@@ -301,17 +322,47 @@ def run(
         raise exc
 
 
-def _run_in_notebook(ex: type, run_args, trials_folder, matplotlib_dpi=72):
+def _run_in_notebook(ex: type, seed, group, params, trials_folder, matplotlib_dpi=72):
+    run_args = {param.arg_name: param.vals for param in params if param.modules is None}
+    run_args["seed"] = seed
+    if group is not None:
+        run_args["group"] = group
+    
+    pickles = {
+        param.arg_name: _finalize_param(param, trials_folder)
+        for param in params
+        if param.modules is not None
+    }
+    mod_names_and_paths = [
+        (mod, sys.modules[mod].__file__)
+        for param in params for mod in param.modules
+    ]
+
     code = (
         "import importlib\n"
         "from pathlib import Path\n"
         "import matplotlib as mpl\n"
         "from numpy import array\n"
-        "import sys\n"
+        "import pickle\n"
+        "import sys\n\n"
+
+        f"mods = {mod_names_and_paths}\n"
+        "for modname, modpath in mods:\n"
+        "  importlib.import_module(modname, mod_path)"
         f"importlib.import_module({ex.__name__})\n\n"
+
+        "def unpickle(file, mod_paths):\n"
+        "  with open(file, 'rb') as fh:"
+        "    obj = pickle.load(fh)"
+        "  return obj"
+
+        f"args = {run_args}\n"
+        f"pickles = {pickles}\n"
+        "for a_name, a_pickle in pickles:\n"
+        f"  args[a_name] = unpickle(a_pickle)"
+
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
-        f"args = {run_args}\n"
         f"print('Imported {ex.name} from {ex.__file__}')\n"
         'print(f"Running {module.__name__}.run() with parameters {args}")\n'
         'seed = args.pop("seed")\n'
