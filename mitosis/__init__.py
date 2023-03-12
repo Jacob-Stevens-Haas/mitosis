@@ -323,43 +323,41 @@ def run(
 
 
 def _run_in_notebook(ex: type, seed, group, params, trials_folder, matplotlib_dpi=72):
-    run_args = {param.arg_name: param.vals for param in params if param.modules is None}
+    run_args = {param.arg_name: param.vals for param in params if not param.modules}
     run_args["seed"] = seed
     if group is not None:
         run_args["group"] = group
     
     pickles = {
-        param.arg_name: _finalize_param(param, trials_folder)
+        param.arg_name: str(_finalize_param(param, trials_folder))
         for param in params
-        if param.modules is not None
+        if param.modules
     }
     mod_names_and_paths = [
-        (mod, sys.modules[mod].__file__)
+        (mod.__name__, mod.__file__)
         for param in params for mod in param.modules
     ]
 
     code = (
         "import importlib\n"
-        "from pathlib import Path\n"
         "import matplotlib as mpl\n"
-        "from numpy import array\n"
         "import pickle\n"
         "import sys\n\n"
 
         f"mods = {mod_names_and_paths}\n"
-        "for modname, modpath in mods:\n"
-        "  importlib.import_module(modname, mod_path)"
-        f"importlib.import_module({ex.__name__})\n\n"
+        "for modname, mod_path in mods:\n"
+        "  importlib.import_module(modname, str(mod_path))\n"
+        f'module = importlib.import_module("{ex.__name__}")\n\n'
 
-        "def unpickle(file, mod_paths):\n"
-        "  with open(file, 'rb') as fh:"
-        "    obj = pickle.load(fh)"
-        "  return obj"
+        "def unpickle(file):\n"
+        "  with open(file, 'rb') as fh:\n"
+        "    obj = pickle.load(fh)\n"
+        "  return obj\n\n"
 
         f"args = {run_args}\n"
         f"pickles = {pickles}\n"
-        "for a_name, a_pickle in pickles:\n"
-        f"  args[a_name] = unpickle(a_pickle)"
+        "for a_name, a_pickle in pickles.items():\n"
+        f"  args[a_name] = unpickle(a_pickle)\n\n"
 
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
