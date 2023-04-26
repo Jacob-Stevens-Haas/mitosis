@@ -10,7 +10,8 @@ from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 from time import process_time
-from typing import List, Collection, Mapping, Any
+from types import ModuleType
+from typing import List, Collection, Mapping, Any, Optional
 
 import git
 import nbclient
@@ -34,6 +35,8 @@ from sqlalchemy import Table
 from sqlalchemy import update
 
 REPO = git.Repo(Path.cwd(), search_parent_directories=True)
+
+ModuleInfo = list[tuple[ModuleType, Optional[Collection[str]]]]
 
 
 def trials_columns():
@@ -68,18 +71,20 @@ class Parameter:
             simply recreated from its repr will need to be pickled and the containing
             module imported.
     """
+
     id_name: str
     arg_name: str
     vals: Any
-    modules: List[str]=field(default_factory=list)
+    modules: List[str] = field(default_factory=list)
 
 
 def _finalize_param(param: Parameter, folder: Path | str):
     filename = "arg" + "".join(np.random.choice(list("0123456789abcde"), 9)) + ".pickle"
     location = Path(folder) / filename
-    with open (location, "wb") as fh:
+    with open(location, "wb") as fh:
         pickle.dump(param.vals, fh)
     return location
+
 
 class DBHandler(logging.Handler):
     def __init__(
@@ -217,6 +222,7 @@ def run(
     params: List[Parameter] = None,
     trials_folder=Path(__file__).absolute().parent / "trials",
     output_extension: str = "html",
+    addl_mods_and_names: ModuleInfo = None,
     matplotlib_dpi: int = 72,
 ):
     """Run the selected experiment.
@@ -233,6 +239,8 @@ def run(
         trials_folder (path-like): The folder to store both output and
             logfile.
         output_extension: what output type to produce using nbconvert.
+        addl_mods_and_names: Additional modules names required to
+            run experiment as well as names from those modules.
         matplotlib_resolution: dpi for matplotlib images.  Not yet
             functional.
     """
@@ -293,7 +301,9 @@ def run(
         log_msg += ".  In debugging mode."
     exp_logger.info(log_msg)
 
-    nb, metrics, exc = _run_in_notebook(ex, seed, group, params, trials_folder, matplotlib_dpi)
+    nb, metrics, exc = _run_in_notebook(
+        ex, seed, group, params, trials_folder, addl_mods_and_names, matplotlib_dpi
+    )
 
     utc_now = datetime.now(timezone.utc)
     exp_logger.info(
@@ -322,43 +332,50 @@ def run(
         raise exc
 
 
-def _run_in_notebook(ex: type, seed, group, params, trials_folder, matplotlib_dpi=72):
+def _run_in_notebook(
+    ex: type,
+    seed,
+    group,
+    params,
+    trials_folder,
+    addl_mods_and_names: ModuleInfo,
+    matplotlib_dpi=72,
+):
     run_args = {param.arg_name: param.vals for param in params if not param.modules}
     run_args["seed"] = seed
     if group is not None:
         run_args["group"] = group
-    
+
     pickles = {
         param.arg_name: str(_finalize_param(param, trials_folder))
         for param in params
         if param.modules
     }
     mod_names_and_paths = [
-        (mod.__name__, mod.__file__)
-        for param in params for mod in param.modules
+        (mod.__name__, mod.__file__, []) for param in params for mod in param.modules
     ]
-
+    mod_names_and_paths += [
+        (mod.__name__, mod.__file__, names) for mod, names in addl_mods_and_names
+    ]
     code = (
         "import importlib\n"
         "import matplotlib as mpl\n"
         "import pickle\n"
         "import sys\n\n"
-
         f"mods = {mod_names_and_paths}\n"
-        "for modname, mod_path in mods:\n"
-        "  importlib.import_module(modname, str(mod_path))\n"
+        "for modname, mod_path, names in mods:\n"
+        "  mod = importlib.import_module(modname, str(mod_path))\n"
+        "  for name in names:\n"
+        "    globals()[name] = vars(mod)[name]\n"
         f'module = importlib.import_module("{ex.__name__}")\n\n'
-
         "def unpickle(file):\n"
         "  with open(file, 'rb') as fh:\n"
         "    obj = pickle.load(fh)\n"
         "  return obj\n\n"
-
         f"args = {run_args}\n"
         f"pickles = {pickles}\n"
         "for a_name, a_pickle in pickles.items():\n"
         f"  args[a_name] = unpickle(a_pickle)\n\n"
-
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
         f"print('Imported {ex.name} from {ex.__file__}')\n"
