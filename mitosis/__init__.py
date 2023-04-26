@@ -168,10 +168,10 @@ def _verify_variant_name(trial_db, param: Parameter):
     tb = Table(f"variant_{param.arg_name}", md, *variant_types())
     if isinstance(param.vals, Mapping):
         vals = OrderedDict({k: v for k, v in sorted(param.vals.items())})
-    elif isinstance(param.vals, Collection):
+    elif isinstance(param.vals, Collection) and not isinstance(param.vals, str):
         try:
             vals = sorted(param.vals)
-        except ValueError:
+        except (ValueError, TypeError):
             vals = param.vals
     else:
         vals = param.vals
