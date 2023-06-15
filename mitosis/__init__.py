@@ -223,6 +223,7 @@ def run(
     trials_folder=Path(__file__).absolute().parent / "trials",
     output_extension: str = "html",
     addl_mods_and_names: ModuleInfo = None,
+    untracked_params: Collection[str]=None,
     matplotlib_dpi: int = 72,
 ):
     """Run the selected experiment.
@@ -241,6 +242,7 @@ def run(
         output_extension: what output type to produce using nbconvert.
         addl_mods_and_names: Additional modules names required to
             run experiment as well as names from those modules.
+        untracked_params: names of parameters to not track in database
         matplotlib_resolution: dpi for matplotlib images.  Not yet
             functional.
     """
@@ -256,6 +258,8 @@ def run(
         table_name += f" {group}"
     exp_logger, trials_table = _init_logger(trial_db, f"trials_{ex.name}", debug)
     for param in params:
+        if param.arg_name in untracked_params:
+            continue
         _init_variant_table(trial_db, param)
         _verify_variant_name(trial_db, param)
     id_names = [param.id_name for param in params]
