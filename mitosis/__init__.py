@@ -54,7 +54,7 @@ def trials_columns():
 def variant_types():
     return [
         Column("name", String, primary_key=True),
-        Column("params", String, unique=True),
+        Column("params", String, unique=False),
     ]
 
 
@@ -161,8 +161,13 @@ def _init_variant_table(trial_log, param: Parameter):
     return var_table
 
 
-def _verify_variant_name(trial_db, param: Parameter):
-    """Check for conflicts and register variant name in parameter table"""
+def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
+    """Check for conflicts between variant names in prior trials
+
+    Side effects:
+        - If trial_db does not exist, will create it
+        - If variant name has not been used before, will insert it
+    """
     eng = create_engine("sqlite:///" + str(trial_db))
     md = MetaData()
     tb = Table(f"variant_{param.arg_name}", md, *variant_types())
@@ -176,11 +181,11 @@ def _verify_variant_name(trial_db, param: Parameter):
     else:
         vals = param.vals
     df = pd.read_sql(select(tb), eng)
-    ind_equal = df.loc[:, "params"] == str(vals)
+    ind_equal = df.loc[:, "name"] == param.id_name
     if ind_equal.sum() == 0:
         stmt = insert(tb, values={"name": param.id_name, "params": str(vals)})
         eng.execute(stmt)
-    elif df.loc[ind_equal, "name"].iloc[0] != param.id_name:
+    elif df.loc[ind_equal, "params"].iloc[0] != str(vals):
         raise RuntimeError(
             f"Parameter name {param.id_name} "
             f"is stored with different values in {trial_db}, {tb}"
