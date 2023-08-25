@@ -311,7 +311,7 @@ def run(
     exp_logger.info(log_msg)
 
     nb, metrics, exc = _run_in_notebook(
-        ex, seed, group, params, trials_folder, addl_mods_and_names, matplotlib_dpi
+        ex, seed, group, params, trials_folder, addl_mods_and_names, debug_suffix, matplotlib_dpi
     )
 
     utc_now = datetime.now(timezone.utc)
@@ -348,6 +348,7 @@ def _run_in_notebook(
     params,
     trials_folder,
     addl_mods_and_names: ModuleInfo,
+    results_suffix: str,
     matplotlib_dpi=72,
 ):
     run_args = {param.arg_name: param.vals for param in params if not param.modules}
@@ -395,7 +396,10 @@ def _run_in_notebook(
     nb = nbformat.v4.new_notebook()
     setup_cell = nbformat.v4.new_code_cell(source=code)
     run_cell = nbformat.v4.new_code_cell(source="results = module.run(seed, **args)")
-    final_cell = nbformat.v4.new_code_cell(source="print(repr(results))")
+    final_cell = nbformat.v4.new_code_cell(
+        source="print(repr(results))\n"
+        f"with open('results{results_suffix}.npy', 'wb') as f: np.save(f, results)"
+    )
     nb["cells"] = [setup_cell, run_cell, final_cell]
 
     kernel_name = _create_kernel()
