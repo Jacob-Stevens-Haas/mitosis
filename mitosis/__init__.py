@@ -370,6 +370,7 @@ def _run_in_notebook(
     code = (
         "import importlib\n"
         "import matplotlib as mpl\n"
+        "import numpy as np\n"
         "import pickle\n"
         "import sys\n\n"
         f"mods = {mod_names_and_paths}\n"
@@ -397,8 +398,9 @@ def _run_in_notebook(
     setup_cell = nbformat.v4.new_code_cell(source=code)
     run_cell = nbformat.v4.new_code_cell(source="results = module.run(seed, **args)")
     final_cell = nbformat.v4.new_code_cell(
-        source="print(repr(results))\n"
-        f"with open('results{results_suffix}.npy', 'wb') as f: np.save(f, results)"
+        source=""
+        f"with open('results{results_suffix}.npy', 'wb') as f: np.save(f, results)\n"
+        "print(repr(results))\n"
     )
     nb["cells"] = [setup_cell, run_cell, final_cell]
 
