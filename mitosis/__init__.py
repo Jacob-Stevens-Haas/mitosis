@@ -399,7 +399,7 @@ def _run_in_notebook(
     run_cell = nbformat.v4.new_code_cell(source="results = module.run(seed, **args)")
     final_cell = nbformat.v4.new_code_cell(
         source=""
-        f"with open({trials_folder / ('results'+results_suffix+'.npy')}, 'wb') as f:\n"
+        f"with open('{trials_folder / ('results'+results_suffix+'.npy')}', 'wb') as f:\n"
         "  np.save(f, results)\n"
         "print(repr(results))\n"
     )
