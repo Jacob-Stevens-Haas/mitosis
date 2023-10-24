@@ -10,7 +10,9 @@ from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 from time import process_time
-from types import ModuleType
+from types import (
+    ModuleType, FunctionType, MethodType, BuiltinFunctionType, BuiltinMethodType
+)
 from typing import List, Collection, Mapping, Any, Optional
 
 import git
@@ -446,3 +448,49 @@ def _save_notebook(nb, filename, trials_folder, extension):
 def _parse_results(result_string):
     match = re.search(r"'main': (.*)}", result_string, re.DOTALL)
     return match.group(1)
+
+class StrictlyReproduceableDict(OrderedDict):
+    """A Dict that enforces reproduceable string representations
+
+    The standard function.__str__ includes a memory location, which means the
+    string representation of a function changes every time a program is run.
+    In order to provide some stability in logs indicating that a function was
+    run, the following dictionary will reject creating a string from functions
+    that are difficult or impossible to reproduce in experiments.  It will also
+    produce a reasonable string representation without the memory address for
+    functions that are reproduceable.
+    """
+    def __str__(self):
+        string = "{"
+        def cleanstr(obj):
+            if (
+                isinstance(obj, FunctionType)
+                or isinstance(obj, MethodType)
+                or isinstance(obj, BuiltinFunctionType)
+                or isinstance(obj, BuiltinMethodType)
+            ):
+                if obj.__name__ == "<lambda>":
+                    raise ValueError("Cannot use lambda functions in this context")
+                import_error = ImportError(
+                    "Other modules must be able to import stored functions and modules:"
+                    f"function named {obj.__qualname__} stored in {obj.__module__}"
+                )
+                if obj.__module__ == "__main__":
+                    raise import_error
+                if "<locals>" in obj.__qualname__:
+                    raise import_error
+                try:
+                    mod = sys.modules[obj.__module__]
+                except KeyError:
+                    raise import_error
+                if (not hasattr(mod, obj.__qualname__) 
+                    or getattr(mod, obj.__qualname__) != obj):
+                    raise import_error
+                return f"<{type(obj).__name__} {obj.__module__}.{obj.__qualname__}>"
+            else:
+                return str(obj)
+        for k, v in self.items():
+            string += f"{cleanstr(k)}: {cleanstr(v)}, "
+        else:
+            string = string[:-2] + "}"
+        return string
