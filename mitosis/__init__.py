@@ -391,7 +391,7 @@ def _run_in_notebook(
         f"  args[a_name] = unpickle(a_pickle)\n\n"
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
-        f"print('Imported {ex.name} from {ex.__file__}')\n"
+        f"print(r'Imported {ex.name} from {ex.__file__}')\n"
         'print(f"Running {module.__name__}.run() with parameters {args}")\n'
         'seed = args.pop("seed")\n'
     )
