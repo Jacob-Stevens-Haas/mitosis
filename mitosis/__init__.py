@@ -18,8 +18,8 @@ from typing import List, Collection, Mapping, Any, Optional, Hashable
 import git
 import nbclient
 import nbformat
-import numpy as np
 import pandas as pd
+from numpy.random import choice
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers import FilesWriter
@@ -81,7 +81,7 @@ class Parameter:
 
 
 def _finalize_param(param: Parameter, folder: Path | str):
-    filename = "arg" + "".join(np.random.choice(list("0123456789abcde"), 9)) + ".pickle"
+    filename = "arg" + "".join(choice(list("0123456789abcde"), 9)) + ".pickle"
     location = Path(folder) / filename
     with open(location, "wb") as fh:
         pickle.dump(param.vals, fh)
@@ -278,7 +278,7 @@ def run(
     )
 
     iteration = _id_variant_iteration(trial_db, trials_table, master_variant)
-    debug_suffix = "_" + "".join(np.random.choice(list("0123456789abcde"), 6))
+    debug_suffix = "_" + "".join(choice(list("0123456789abcde"), 6))
     new_filename = f"trial_{ex.name}"
     if group is not None:
         new_filename += f"_{group}"
@@ -427,7 +427,7 @@ def _run_in_notebook(
 def _create_kernel():
     from ipykernel import kernelapp as app
 
-    kernel_name = sys.executable.replace("/", ".").replace("\\", ".").replace(":", ".")
+    kernel_name = choice(list("0123456789"), 6) + str(hash(Path(sys.executable)))
     app.launch_new_instance(argv=["install", "--user", "--name", kernel_name])
     return kernel_name
 

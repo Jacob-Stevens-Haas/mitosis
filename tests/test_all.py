@@ -27,7 +27,8 @@ def test_nested_reproduceable_classes():
     mydict = mitosis.StrictlyReproduceableDict(a=mylist)
     mydict = mitosis.StrictlyReproduceableDict(b=mydict)
     result = str(mydict)
-    assert result == '{b: {a: [[<builtin_function_or_method builtins.print>]]}}'
+    assert result == r'{b: {a: [[<builtin_function_or_method builtins.print>]]}}'
+
 
 def mock_global_f(): pass
 mock_global_f.__module__ = "__main__"
