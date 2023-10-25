@@ -10,8 +10,28 @@ def test_reproduceable_dict():
     assert str(mydict) == r"{1: <builtin_function_or_method builtins.print>}"
 
 
+def test_reproduceable_list():
+    mylist = mitosis.StrictlyReproduceableList([1, print])
+    assert str(mylist) == r"[1, <builtin_function_or_method builtins.print>]"
+
+
+def test_unreproduceable_list():
+    # test function in a local closure
+    with pytest.raises(ValueError):
+        str(mitosis.StrictlyReproduceableList([1, lambda x: 1]))
+
+
+def test_nested_reproduceable_classes():
+    mylist = mitosis.StrictlyReproduceableList([print])
+    mylist = mitosis.StrictlyReproduceableList([mylist])
+    mydict = mitosis.StrictlyReproduceableDict(a=mylist)
+    mydict = mitosis.StrictlyReproduceableDict(b=mydict)
+    result = str(mydict)
+    assert result == '{b: {a: [[<builtin_function_or_method builtins.print>]]}}'
+
 def mock_global_f(): pass
 mock_global_f.__module__ = "__main__"
+
 
 def test_unreproduceable_dict():
     # test function in a local closure

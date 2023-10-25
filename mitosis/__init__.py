@@ -13,7 +13,7 @@ from time import process_time
 from types import (
     ModuleType, FunctionType, MethodType, BuiltinFunctionType, BuiltinMethodType
 )
-from typing import List, Collection, Mapping, Any, Optional
+from typing import List, Collection, Mapping, Any, Optional, Hashable
 
 import git
 import nbclient
@@ -174,10 +174,12 @@ def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
     md = MetaData()
     tb = Table(f"variant_{param.arg_name}", md, *variant_types())
     if isinstance(param.vals, Mapping):
-        vals = OrderedDict({k: v for k, v in sorted(param.vals.items())})
+        vals = StrictlyReproduceableDict(
+            {k: v for k, v in sorted(param.vals.items())}
+        )
     elif isinstance(param.vals, Collection) and not isinstance(param.vals, str):
         try:
-            vals = sorted(param.vals)
+            vals = StrictlyReproduceableList(sorted(param.vals))
         except (ValueError, TypeError):
             vals = param.vals
     else:
@@ -449,6 +451,36 @@ def _parse_results(result_string):
     match = re.search(r"'main': (.*)}", result_string, re.DOTALL)
     return match.group(1)
 
+
+def cleanstr(obj):
+    if (
+        isinstance(obj, FunctionType)
+        or isinstance(obj, MethodType)
+        or isinstance(obj, BuiltinFunctionType)
+        or isinstance(obj, BuiltinMethodType)
+    ):
+        if obj.__name__ == "<lambda>":
+            raise ValueError("Cannot use lambda functions in this context")
+        import_error = ImportError(
+            "Other modules must be able to import stored functions and modules:"
+            f"function named {obj.__qualname__} stored in {obj.__module__}"
+        )
+        if obj.__module__ == "__main__":
+            raise import_error
+        if "<locals>" in obj.__qualname__:
+            raise import_error
+        try:
+            mod = sys.modules[obj.__module__]
+        except KeyError:
+            raise import_error
+        if (not hasattr(mod, obj.__qualname__)
+            or getattr(mod, obj.__qualname__) != obj):
+            raise import_error
+        return f"<{type(obj).__name__} {obj.__module__}.{obj.__qualname__}>"
+    else:
+        return str(obj)
+
+
 class StrictlyReproduceableDict(OrderedDict):
     """A Dict that enforces reproduceable string representations
 
@@ -462,35 +494,29 @@ class StrictlyReproduceableDict(OrderedDict):
     """
     def __str__(self):
         string = "{"
-        def cleanstr(obj):
-            if (
-                isinstance(obj, FunctionType)
-                or isinstance(obj, MethodType)
-                or isinstance(obj, BuiltinFunctionType)
-                or isinstance(obj, BuiltinMethodType)
-            ):
-                if obj.__name__ == "<lambda>":
-                    raise ValueError("Cannot use lambda functions in this context")
-                import_error = ImportError(
-                    "Other modules must be able to import stored functions and modules:"
-                    f"function named {obj.__qualname__} stored in {obj.__module__}"
-                )
-                if obj.__module__ == "__main__":
-                    raise import_error
-                if "<locals>" in obj.__qualname__:
-                    raise import_error
-                try:
-                    mod = sys.modules[obj.__module__]
-                except KeyError:
-                    raise import_error
-                if (not hasattr(mod, obj.__qualname__) 
-                    or getattr(mod, obj.__qualname__) != obj):
-                    raise import_error
-                return f"<{type(obj).__name__} {obj.__module__}.{obj.__qualname__}>"
-            else:
-                return str(obj)
         for k, v in self.items():
-            string += f"{cleanstr(k)}: {cleanstr(v)}, "
+            string += f"{cleanstr(k)}: "
+            if isinstance(v, Mapping):
+                string += str(StrictlyReproduceableDict(**v)) + ", "
+            elif isinstance(v, Collection) and not isinstance(v, Hashable):
+                string += str(StrictlyReproduceableList(v)) + ", "
+            else:
+                string += f"{cleanstr(v)}, "
         else:
             string = string[:-2] + "}"
+        return string
+
+
+class StrictlyReproduceableList(List):
+    def __str__(self):
+        string = "["
+        for item in iter(self):
+            if isinstance(item, Mapping):
+                string += str(StrictlyReproduceableDict(**item)) + ", "
+            elif isinstance(item, Collection) and not isinstance(item, Hashable):
+                string += str(StrictlyReproduceableList(item)) + ", "
+            else:
+                string += f"{cleanstr(item)}, "
+        else:
+            string = string[:-2] + "]"
         return string
