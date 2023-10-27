@@ -5,6 +5,7 @@ import pytest
 
 import mitosis
 
+
 def test_reproduceable_dict():
     mydict = mitosis.StrictlyReproduceableDict(**{1: print})
     assert str(mydict) == r"{1: <builtin_function_or_method builtins.print>}"
@@ -40,13 +41,18 @@ def test_nested_reproduceable_classes():
     assert result == r"{'b': {'a': [[<builtin_function_or_method builtins.print>]]}}"
 
 
-def mock_global_f(): pass
+def mock_global_f():
+    pass
+
+
 mock_global_f.__module__ = "__main__"
 
 
 def test_unreproduceable_dict():
     # test function in a local closure
-    def mock_local_f(): pass
+    def mock_local_f():
+        pass
+
     with pytest.raises(ImportError):
         str(mitosis.StrictlyReproduceableDict(**{1: mock_local_f}))
 

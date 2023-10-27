@@ -3,27 +3,34 @@ import pickle
 import re
 import sys
 import warnings
-from collections import namedtuple
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 from time import process_time
-from types import (
-    ModuleType, FunctionType, MethodType, BuiltinFunctionType, BuiltinMethodType
-)
-from typing import List, Collection, Mapping, Any, Optional, Hashable
+from types import BuiltinFunctionType
+from types import BuiltinMethodType
+from types import FunctionType
+from types import MethodType
+from types import ModuleType
+from typing import Any
+from typing import Collection
+from typing import Hashable
+from typing import List
+from typing import Mapping
+from typing import Optional
 
 import git
 import nbclient
 import nbformat
 import pandas as pd
-from numpy.random import choice
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers import FilesWriter
-from numpy import array  # noqa - used in an eval() in _parse_results()
+from numpy import array  # noqa: F401 used in an eval() in _parse_results()
+from numpy.random import choice
 from sqlalchemy import Column
 from sqlalchemy import create_engine
 from sqlalchemy import Float
@@ -174,9 +181,7 @@ def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
     md = MetaData()
     tb = Table(f"variant_{param.arg_name}", md, *variant_types())
     if isinstance(param.vals, Mapping):
-        vals = StrictlyReproduceableDict(
-            {k: v for k, v in sorted(param.vals.items())}
-        )
+        vals = StrictlyReproduceableDict({k: v for k, v in sorted(param.vals.items())})
     elif isinstance(param.vals, Collection) and not isinstance(param.vals, str):
         try:
             vals = StrictlyReproduceableList(sorted(param.vals))
@@ -233,7 +238,7 @@ def run(
     trials_folder=Path(__file__).absolute().parent / "trials",
     output_extension: str = "html",
     addl_mods_and_names: ModuleInfo = None,
-    untracked_params: Collection[str]=None,
+    untracked_params: Collection[str] = None,
     matplotlib_dpi: int = 72,
 ):
     """Run the selected experiment.
@@ -316,7 +321,14 @@ def run(
     exp_logger.info(log_msg)
 
     nb, metrics, exc = _run_in_notebook(
-        ex, seed, group, params, trials_folder, addl_mods_and_names, debug_suffix, matplotlib_dpi
+        ex,
+        seed,
+        group,
+        params,
+        trials_folder,
+        addl_mods_and_names,
+        debug_suffix,
+        matplotlib_dpi,
     )
 
     utc_now = datetime.now(timezone.utc)
@@ -404,7 +416,7 @@ def _run_in_notebook(
     run_cell = nbformat.v4.new_code_cell(source="results = module.run(seed, **args)")
     final_cell = nbformat.v4.new_code_cell(
         source=""
-        f"with open('{trials_folder / ('results'+results_suffix+'.npy')}', 'wb') as f:\n"
+        f"with open('{trials_folder / ('results'+results_suffix+'.npy')}', 'wb') as f:\n"  # noqa E501
         "  np.save(f, results)\n"
         "print(repr(results))\n"
     )
@@ -474,8 +486,7 @@ def cleanstr(obj):
             mod = sys.modules[obj.__module__]
         except KeyError:
             raise import_error
-        if (not hasattr(mod, obj.__qualname__)
-            or getattr(mod, obj.__qualname__) != obj):
+        if not hasattr(mod, obj.__qualname__) or getattr(mod, obj.__qualname__) != obj:
             raise import_error
         return f"<{type(obj).__name__} {obj.__module__}.{obj.__qualname__}>"
     else:
@@ -495,6 +506,7 @@ class StrictlyReproduceableDict(OrderedDict):
     produce a reasonable string representation without the memory address for
     functions that are reproduceable.
     """
+
     def __str__(self):
         string = "{"
         for k, v in self.items():
