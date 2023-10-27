@@ -82,3 +82,7 @@ def test_unreproduceable_dict():
     # test lambda function
     with pytest.raises(ValueError):
         str(mitosis.StrictlyReproduceableDict(**{1: lambda x: 1}))
+
+
+def test_kernel_name():
+    mitosis._create_kernel()

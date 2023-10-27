@@ -440,7 +440,9 @@ def _run_in_notebook(
 def _create_kernel():
     from ipykernel import kernelapp as app
 
-    kernel_name = choice(list("0123456789"), 6) + str(hash(Path(sys.executable)))
+    kernel_name = "".join(choice(list("0123456789"), 6)) + str(
+        hash(Path(sys.executable))
+    )
     app.launch_new_instance(argv=["install", "--user", "--name", kernel_name])
     return kernel_name
 
