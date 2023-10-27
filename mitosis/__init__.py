@@ -479,6 +479,8 @@ def cleanstr(obj):
             raise import_error
         return f"<{type(obj).__name__} {obj.__module__}.{obj.__qualname__}>"
     else:
+        if isinstance(obj, str):
+            return f"'{str(obj)}'"
         return str(obj)
 
 
