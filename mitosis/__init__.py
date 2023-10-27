@@ -191,8 +191,9 @@ def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
         eng.execute(stmt)
     elif df.loc[ind_equal, "params"].iloc[0] != str(vals):
         raise RuntimeError(
-            f"Parameter name {param.id_name} "
-            f"is stored with different values in {trial_db}, {tb}"
+            f"Parameter '{param.arg_name}' variant '{param.id_name}' "
+            f"is stored with different values in {trial_db}, table '{tb}'. "
+            f"(Stored: {df.loc[ind_equal, 'params'].iloc[0]}), attmpeted: {str(vals)}."
         )
     # Otherwise, parameter has already been registered and no conflicts
 
