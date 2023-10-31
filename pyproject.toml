@@ -84,3 +84,6 @@ filterwarnings = [
   "ignore::UserWarning",]
 addopts = '-m "not slow"'
 markers = ["slow"]
+
+[tool.codespell]
+ignore-words-list = "raison"
