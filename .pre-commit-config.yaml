@@ -15,7 +15,7 @@ repos:
   hooks:
     - id: black
 - repo: https://github.com/pycqa/flake8
-  rev: 3.9.2
+  rev: 6.1.0
   hooks:
     - id: flake8
       args: ["--config=setup.cfg"]
@@ -24,10 +24,10 @@ repos:
     hooks:
       - id: rst-backticks
       - id: rst-directive-colons
-        types: [text]  # overwrite types: [rst]
+        types: [text]
         types_or: [python, rst]
       - id: rst-inline-touching-normal
-        types: [text]  # overwrite types: [rst]
+        types: [text]
         types_or: [python, rst]
 -   repo: https://github.com/sphinx-contrib/sphinx-lint
     rev: v0.6.1

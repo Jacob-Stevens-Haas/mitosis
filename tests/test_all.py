@@ -5,6 +5,7 @@ import pytest
 
 import mitosis
 
+
 def test_reproduceable_dict():
     mydict = mitosis.StrictlyReproduceableDict(**{1: print})
     assert str(mydict) == r"{1: <builtin_function_or_method builtins.print>}"
@@ -21,22 +22,37 @@ def test_unreproduceable_list():
         str(mitosis.StrictlyReproduceableList([1, lambda x: 1]))
 
 
+def test_reproduceable_list_of_strs():
+    mylist = mitosis.StrictlyReproduceableList(["a"])
+    assert str(mylist) == r"['a']"
+
+
+def test_reproduceable_dict_of_strs():
+    mylist = mitosis.StrictlyReproduceableDict({"a": "b"})
+    assert str(mylist) == r"{'a': 'b'}"
+
+
 def test_nested_reproduceable_classes():
     mylist = mitosis.StrictlyReproduceableList([print])
     mylist = mitosis.StrictlyReproduceableList([mylist])
     mydict = mitosis.StrictlyReproduceableDict(a=mylist)
     mydict = mitosis.StrictlyReproduceableDict(b=mydict)
     result = str(mydict)
-    assert result == r'{b: {a: [[<builtin_function_or_method builtins.print>]]}}'
+    assert result == r"{'b': {'a': [[<builtin_function_or_method builtins.print>]]}}"
 
 
-def mock_global_f(): pass
+def mock_global_f():
+    pass
+
+
 mock_global_f.__module__ = "__main__"
 
 
 def test_unreproduceable_dict():
     # test function in a local closure
-    def mock_local_f(): pass
+    def mock_local_f():
+        pass
+
     with pytest.raises(ImportError):
         str(mitosis.StrictlyReproduceableDict(**{1: mock_local_f}))
 
@@ -66,3 +82,7 @@ def test_unreproduceable_dict():
     # test lambda function
     with pytest.raises(ValueError):
         str(mitosis.StrictlyReproduceableDict(**{1: lambda x: 1}))
+
+
+def test_kernel_name():
+    mitosis._create_kernel()
