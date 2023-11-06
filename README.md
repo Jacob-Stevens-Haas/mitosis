@@ -207,9 +207,10 @@ Then, the following code works:
 
 When developing and expanding experiments, it helps to allow a `debug` argument
 in `__main__.py` so as to pass through to `mitosis.run()`.  This arg allows you
-to run experiments in a dirty git repository and will neither save results in
-the experimental database nor increment the trials counter.  It will, however,
-lock in the definitions of any new variants and create the output notebook.
+to run experiments in a dirty git repository (or no repository) and will neither
+save results in the experimental database, nor increment the trials counter, nor
+verify/lock in the definitions of any variants.  It will, however, create the
+output notebook.
 
 Early experiment prototyping involves quickly iterating on parameter lists and
 complexity.  `mitosis` will still lock in definitions of variants, which means

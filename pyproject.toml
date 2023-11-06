@@ -36,6 +36,7 @@ classifiers = [
 dependencies = [
   "GitPython",
   "ipykernel",
+  "matplotlib",
   "nbconvert",
   "nbclient",
   "nbformat",

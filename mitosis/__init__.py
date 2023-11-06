@@ -43,8 +43,6 @@ from sqlalchemy import String
 from sqlalchemy import Table
 from sqlalchemy import update
 
-REPO = git.Repo(Path.cwd(), search_parent_directories=True)
-
 ModuleInfo = list[tuple[ModuleType, Optional[Collection[str]]]]
 
 
@@ -237,7 +235,7 @@ def run(
     params: List[Parameter] = None,
     trials_folder=Path(__file__).absolute().parent / "trials",
     output_extension: str = "html",
-    addl_mods_and_names: ModuleInfo = None,
+    addl_mods_and_names: Collection[ModuleInfo] = [],
     untracked_params: Collection[str] = None,
     matplotlib_dpi: int = 72,
 ):
@@ -261,6 +259,7 @@ def run(
         matplotlib_resolution: dpi for matplotlib images.  Not yet
             functional.
     """
+    REPO = None if debug else git.Repo(Path.cwd(), search_parent_directories=True)
     if not debug and REPO.is_dirty():
         raise RuntimeError(
             "Git Repo is dirty.  For repeatable tests,"
@@ -273,7 +272,7 @@ def run(
         table_name += f" {group}"
     exp_logger, trials_table = _init_logger(trial_db, f"trials_{ex.name}", debug)
     for param in params:
-        if param.arg_name in untracked_params:
+        if debug or param.arg_name in untracked_params:
             continue
         _init_variant_table(trial_db, param)
         _verify_variant_name(trial_db, param)
@@ -283,7 +282,9 @@ def run(
         [x for _, x in sorted(zip(arg_names, id_names), key=lambda pair: pair[0])]
     )
 
-    iteration = _id_variant_iteration(trial_db, trials_table, master_variant)
+    iteration = (
+        0 if debug else _id_variant_iteration(trial_db, trials_table, master_variant)
+    )
     debug_suffix = "_" + "".join(choice(list("0123456789abcde"), 6))
     new_filename = f"trial_{ex.name}"
     if group is not None:
@@ -297,7 +298,7 @@ def run(
         new_filename += ".html"
     elif output_extension == "ipynb":
         new_filename += ".ipynb"
-    commit = REPO.head.commit.hexsha
+    commit = "0000000" if debug else REPO.head.commit.hexsha
     exp_logger.info(
         "trial entry: insert"
         + f"--{master_variant}"
@@ -364,7 +365,7 @@ def _run_in_notebook(
     group,
     params,
     trials_folder,
-    addl_mods_and_names: ModuleInfo,
+    addl_mods_and_names: Collection[ModuleInfo],
     results_suffix: str,
     matplotlib_dpi=72,
 ):
@@ -378,12 +379,16 @@ def _run_in_notebook(
         for param in params
         if param.modules
     }
+    if not isinstance(ex, ModuleType):
+        # ex is a class or something else that needs to be imported from a module
+        pickles["_ex"] = str(_finalize_param(Parameter("_ex", None, ex), trials_folder))
     mod_names_and_paths = [
         (mod.__name__, mod.__file__, []) for param in params for mod in param.modules
     ]
     mod_names_and_paths += [
         (mod.__name__, mod.__file__, names) for mod, names in addl_mods_and_names
     ]
+    ex_module = ex.__name__ if isinstance(ex, ModuleType) else ex.__module__
     code = (
         "import importlib\n"
         "import matplotlib as mpl\n"
@@ -395,7 +400,7 @@ def _run_in_notebook(
         "  mod = importlib.import_module(modname, str(mod_path))\n"
         "  for name in names:\n"
         "    globals()[name] = vars(mod)[name]\n"
-        f'module = importlib.import_module("{ex.__name__}")\n\n'
+        f'ex = importlib.import_module("{ex_module}")\n\n'
         "def unpickle(file):\n"
         "  with open(file, 'rb') as fh:\n"
         "    obj = pickle.load(fh)\n"
@@ -403,17 +408,20 @@ def _run_in_notebook(
         f"args = {run_args}\n"
         f"pickles = {pickles}\n"
         "for a_name, a_pickle in pickles.items():\n"
+        f"  if a_name == '_ex':\n"
+        f"    ex = unpickle(a_pickle)\n"
+        f"    continue\n"
         f"  args[a_name] = unpickle(a_pickle)\n\n"
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
-        f"print(r'Imported {ex.name} from {ex.__file__}')\n"
-        'print(f"Running {module.__name__}.run() with parameters {args}")\n'
+        f"print(r'Imported {ex.name}')\n"
+        'print(f"Running {ex.name}.run() with parameters {args}")\n'
         'seed = args.pop("seed")\n'
     )
 
     nb = nbformat.v4.new_notebook()
     setup_cell = nbformat.v4.new_code_cell(source=code)
-    run_cell = nbformat.v4.new_code_cell(source="results = module.run(seed, **args)")
+    run_cell = nbformat.v4.new_code_cell(source="results = ex.run(seed, **args)")
     final_cell = nbformat.v4.new_code_cell(
         source=""
         f"with open(r'{trials_folder / ('results'+results_suffix+'.npy')}', 'wb') as f:\n"  # noqa E501

@@ -1,3 +1,4 @@
+import importlib
 import sys
 from types import ModuleType
 
@@ -86,3 +87,72 @@ def test_unreproduceable_dict():
 
 def test_kernel_name():
     mitosis._create_kernel()
+
+
+@pytest.fixture
+def fake_param1():
+    return mitosis.Parameter("test", "foo", 1)
+
+
+@pytest.fixture
+def fake_param2():
+    return mitosis.Parameter("test", "foo", 2)
+
+
+class MockExperiment:
+    def __init__(self):
+        self.name = "mock"
+
+    def run(self, seed, foo):
+        return {"main": 0}
+
+
+@pytest.fixture
+def mock_experiment_obj():
+    return MockExperiment()
+
+
+@pytest.fixture
+def mock_experiment_mod():
+    return importlib.import_module(__name__)
+
+
+def test_empty_obj_experiment(tmp_path, mock_experiment_obj, fake_param1, fake_param2):
+    mitosis.run(
+        mock_experiment_obj,
+        debug=True,
+        seed=10,
+        trials_folder=tmp_path,
+        params=[fake_param1],
+    )
+    mitosis.run(
+        mock_experiment_obj,
+        debug=True,
+        seed=10,
+        trials_folder=tmp_path,
+        params=[fake_param2],
+    )
+
+
+def test_empty_mod_experiment(tmp_path, mock_experiment_mod, fake_param1, fake_param2):
+    mitosis.run(
+        mock_experiment_mod,
+        debug=True,
+        seed=10,
+        trials_folder=tmp_path,
+        params=[fake_param1],
+    )
+    mitosis.run(
+        mock_experiment_mod,
+        debug=True,
+        seed=10,
+        trials_folder=tmp_path,
+        params=[fake_param2],
+    )
+
+
+def run(seed, foo):
+    return {"main": 0}
+
+
+name = "MockModuleExperiment"
