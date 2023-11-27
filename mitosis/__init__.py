@@ -394,6 +394,7 @@ def _run_in_notebook(
         "import matplotlib as mpl\n"
         "import numpy as np\n"
         "import pickle\n"
+        "import dill\n"
         "import sys\n\n"
         f"mods = {mod_names_and_paths}\n"
         "for modname, mod_path, names in mods:\n"
@@ -425,7 +426,7 @@ def _run_in_notebook(
     final_cell = nbformat.v4.new_code_cell(
         source=""
         f"with open(r'{trials_folder / ('results'+results_suffix+'.npy')}', 'wb') as f:\n"  # noqa E501
-        "  np.save(f, results)\n"
+        "  dill.dump(results, f)\n"
         "print(repr(results))\n"
     )
     nb["cells"] = [setup_cell, run_cell, final_cell]
