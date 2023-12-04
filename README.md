@@ -18,12 +18,14 @@ different commits, parameterizations, and random seed.
 
     import numpy as np
 
+    name = "sine-exp"
+
     def run(seed, amplitude):
         """Deterimne if the maximum value of the sine function equals ``amplitude``"""
         x = np.arange(0, 10, .05)
         y = amplitude * np.sin(x)
         err = np.abs(max(y) - amplitude)
-        results = {"main": err}
+        return {"main": err}
 
 *in interpreter or script*
 
@@ -33,7 +35,7 @@ different commits, parameterizations, and random seed.
     from pathlib import Path
 
     folder = Path(".").resolve()
-    params = [mitosis.Parameter("my_variant", amplitude, 4)]
+    params = [mitosis.Parameter("my_variant", "amplitude", 4)]
 
     mitosis.run(sine_experiment, params=params, trials_folder=folder)
 
@@ -82,7 +84,7 @@ modules to the `mitosis.Parameter`.  In the example above, it would be:
 
     this_module = importlib.import_module(__name__)
     folder = Path(".").resolve()
-    params = [mitosis.Parameter("my_variant", amplitude, 4, [this_module])]
+    params = [mitosis.Parameter("my_variant", "amplitude", 4, [this_module])]
 
     mitosis.run(sine_experiment, params=params, trials_folder=folder)
 
