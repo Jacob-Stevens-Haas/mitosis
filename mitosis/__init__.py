@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from dataclasses import field
 from datetime import datetime
 from datetime import timezone
+from importlib.metadata import packages_distributions
+from importlib.metadata import version
 from pathlib import Path
 from time import process_time
 from types import BuiltinFunctionType
@@ -321,14 +323,18 @@ def run(
         log_msg += ".  In debugging mode."
     exp_logger.info(log_msg)
 
+    exp_metadata_name = datetime.now().astimezone().strftime(r"%Y-%m-%d") + debug_suffix
+    exp_metadata_folder = trials_folder / exp_metadata_name
+    exp_metadata_folder.mkdir()
+    _write_freezefile(exp_metadata_folder)
+
     nb, metrics, exc = _run_in_notebook(
         ex,
         seed,
         group,
         params,
-        trials_folder,
+        exp_metadata_folder,
         addl_mods_and_names,
-        debug_suffix,
         matplotlib_dpi,
     )
 
@@ -366,7 +372,6 @@ def _run_in_notebook(
     params,
     trials_folder,
     addl_mods_and_names: Collection[ModuleInfo],
-    results_suffix: str,
     matplotlib_dpi=72,
 ):
     run_args = {param.arg_name: param.vals for param in params if not param.modules}
@@ -425,7 +430,7 @@ def _run_in_notebook(
     run_cell = nbformat.v4.new_code_cell(source="results = ex.run(seed, **args)")
     final_cell = nbformat.v4.new_code_cell(
         source=""
-        f"with open(r'{trials_folder / ('results'+results_suffix+'.npy')}', 'wb') as f:\n"  # noqa E501
+        f"with open(r'{trials_folder / ('results.dill')}', 'wb') as f:\n"  # noqa E501
         "  dill.dump(results, f)\n"
         "print(repr(results))\n"
     )
@@ -546,3 +551,11 @@ class StrictlyReproduceableList(List):
         else:
             string = string[:-2] + "]"
         return string
+
+
+def _write_freezefile(folder: Path):
+    installed = {pkg for pkgs in packages_distributions().values() for pkg in pkgs}
+    req_str = "# {sys.version}\n"
+    req_str += "\n".join(f"{pkg}=='{version(pkg)}'" for pkg in installed)
+    with open(folder / "requirements.txt", "w") as f:
+        f.write(req_str)
