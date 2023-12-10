@@ -61,7 +61,7 @@ dev = [
 ]
 
 [project.urls]
-homepage = "https://github.com/Jake-Stevens-Haas/mitosis"
+homepage = "https://github.com/Jacob-Stevens-Haas/mitosis"
 
 [tool.setuptools_scm]
 
