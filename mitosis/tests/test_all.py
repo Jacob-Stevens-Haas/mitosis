@@ -103,7 +103,7 @@ class MockExperiment:
     def __init__(self):
         self.name = "mock"
 
-    def run(self, seed, foo):
+    def run(self, foo):
         return {"main": 0}
 
 
@@ -121,14 +121,12 @@ def test_empty_obj_experiment(tmp_path, mock_experiment_obj, fake_param1, fake_p
     mitosis.run(
         mock_experiment_obj,
         debug=True,
-        seed=10,
         trials_folder=tmp_path,
         params=[fake_param1],
     )
     mitosis.run(
         mock_experiment_obj,
         debug=True,
-        seed=10,
         trials_folder=tmp_path,
         params=[fake_param2],
     )
@@ -138,20 +136,18 @@ def test_empty_mod_experiment(tmp_path, mock_experiment_mod, fake_param1, fake_p
     mitosis.run(
         mock_experiment_mod,
         debug=True,
-        seed=10,
         trials_folder=tmp_path,
         params=[fake_param1],
     )
     mitosis.run(
         mock_experiment_mod,
         debug=True,
-        seed=10,
         trials_folder=tmp_path,
         params=[fake_param2],
     )
 
 
-def run(seed, foo):
+def run(foo):
     return {"main": 0}
 
 

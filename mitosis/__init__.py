@@ -52,7 +52,6 @@ def trials_columns():
     return [
         Column("variant", Integer, primary_key=True),
         Column("iteration", Integer, primary_key=True),
-        Column("seed", Integer, primary_key=True),
         Column("commit", String, nullable=False),
         Column("cpu_time", Float),
         Column("results", String),
@@ -230,7 +229,6 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
 def run(
     ex: Experiment,
     debug=False,
-    seed=1,
     *,
     group=None,
     logfile="trials.db",
@@ -305,7 +303,6 @@ def run(
         "trial entry: insert"
         + f"--{master_variant}"
         + f"--{iteration}"
-        + f"--{seed}"
         + f"--{commit}"
         + "--"
         + "--"
@@ -330,7 +327,6 @@ def run(
 
     nb, metrics, exc = _run_in_notebook(
         ex,
-        seed,
         group,
         params,
         exp_metadata_folder,
@@ -355,7 +351,6 @@ def run(
         "trial entry: update"
         + f"--{master_variant}"
         + f"--{iteration}"
-        + f"--{seed}"
         + f"--{commit}"
         + f"--{cpu_time}"
         + f"--{metrics}"
@@ -367,7 +362,6 @@ def run(
 
 def _run_in_notebook(
     ex: type,
-    seed,
     group,
     params,
     trials_folder,
@@ -375,7 +369,6 @@ def _run_in_notebook(
     matplotlib_dpi=72,
 ):
     run_args = {param.arg_name: param.vals for param in params if not param.modules}
-    run_args["seed"] = seed
     if group is not None:
         run_args["group"] = group
 
@@ -422,12 +415,11 @@ def _run_in_notebook(
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
         f"print(r'Imported {ex.name}')\n"
         'print(f"Running {ex.name}.run() with parameters {args}")\n'
-        'seed = args.pop("seed")\n'
     )
 
     nb = nbformat.v4.new_notebook()
     setup_cell = nbformat.v4.new_code_cell(source=code)
-    run_cell = nbformat.v4.new_code_cell(source="results = ex.run(seed, **args)")
+    run_cell = nbformat.v4.new_code_cell(source="results = ex.run(**args)")
     final_cell = nbformat.v4.new_code_cell(
         source=""
         f"with open(r'{trials_folder / ('results.dill')}', 'wb') as f:\n"  # noqa E501
