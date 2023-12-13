@@ -555,7 +555,7 @@ class StrictlyReproduceableList(List):
 
 def _write_freezefile(folder: Path):
     installed = {pkg for pkgs in packages_distributions().values() for pkg in pkgs}
-    req_str = "# {sys.version}\n"
+    req_str = f"# {sys.version}\n"
     req_str += "\n".join(f"{pkg}=='{version(pkg)}'" for pkg in installed)
     with open(folder / "requirements.txt", "w") as f:
         f.write(req_str)
