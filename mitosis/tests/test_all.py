@@ -1,4 +1,5 @@
 import importlib
+import subprocess
 import sys
 from types import ModuleType
 
@@ -144,6 +145,25 @@ def test_empty_mod_experiment(tmp_path, mock_experiment_mod, fake_param1, fake_p
         debug=True,
         trials_folder=tmp_path,
         params=[fake_param2],
+    )
+
+
+def test_cli(tmp_path):
+    subprocess.run(
+        ["which", "python3"],
+    )
+    subprocess.run(
+        [
+            "python3",
+            "-m",
+            "mitosis",
+            "mitosis.tests.mock_experiment",
+            "--param",
+            "foo=test",
+            "-e",
+            "seed=1" "-F",
+            str(tmp_path),
+        ],
     )
 
 

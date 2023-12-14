@@ -18,19 +18,21 @@ from types import FunctionType
 from types import MethodType
 from types import ModuleType
 from typing import Any
+from typing import cast
 from typing import Collection
 from typing import Hashable
 from typing import List
 from typing import Mapping
 from typing import Optional
+from typing import Sequence
 
 import git
-import nbclient
+import nbclient.exceptions
 import nbformat
 import pandas as pd
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
-from nbconvert.writers import FilesWriter
+from nbconvert.writers.files import FilesWriter
 from numpy import array  # noqa: F401 used in an eval() in _parse_results()
 from numpy.random import choice
 from sqlalchemy import Column
@@ -71,19 +73,35 @@ class Parameter:
     """An experimental parameter
 
     Arguments:
-        id_name: short name for the variant (particular values) across use cases
+        var_name: short name for the variant (particular values) across use cases
         arg_name: name of arg known to experiment
         vals: value of the parameter
-        modules: module names required in order to use the values.  Since arguments
-            can only be passed to notebooks as strings, any argument that cannot be
-            simply recreated from its repr will need to be pickled and the containing
-            module imported.
+        eval: whether variant name should be evaluated or looked up.
     """
 
-    id_name: str
+    var_name: str
     arg_name: str
     vals: Any
-    modules: List[str] = field(default_factory=list)
+    eval: bool = field(default=False, kw_only=True)
+
+
+def _split_param_str(paramstr: str) -> tuple[bool, str, str]:
+    arg_name, var_name = paramstr.split("=")
+    track = True
+    if arg_name[0] == "-":
+        track = False
+        arg_name = arg_name[1:]
+    return track, arg_name, var_name
+
+
+def _resolve_param(
+    arg_name: str, var_name: str, lookup_dict: dict[str, Any]
+) -> Parameter:
+    stored = lookup_dict[arg_name][var_name]
+    if isinstance(stored, Parameter):
+        return Parameter(var_name, arg_name, stored.vals, eval=False)
+    else:
+        return Parameter(var_name, arg_name, stored, eval=False)
 
 
 def _finalize_param(param: Parameter, folder: Path | str):
@@ -143,11 +161,6 @@ class DBHandler(logging.Handler):
         return msg.split(self.separator)
 
 
-class Experiment:
-    def run():
-        raise NotImplementedError
-
-
 def _init_logger(trial_log, table_name, debug):
     """Create a Trials logger with a database handler"""
     exp_logger = logging.Logger("experiments")
@@ -189,13 +202,15 @@ def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
     else:
         vals = param.vals
     df = pd.read_sql(select(tb), eng)
-    ind_equal = df.loc[:, "name"] == param.id_name
+    ind_equal = df.loc[:, "name"] == param.var_name
     if ind_equal.sum() == 0:
-        stmt = insert(tb, values={"name": param.id_name, "params": str(vals)})
-        eng.execute(stmt)
+        stmt = insert(
+            tb, values={"name": param.var_name, "params": str(vals)}  # type: ignore
+        )
+        eng.execute(stmt)  # type: ignore
     elif df.loc[ind_equal, "params"].iloc[0] != str(vals):
         raise RuntimeError(
-            f"Parameter '{param.arg_name}' variant '{param.id_name}' "
+            f"Parameter '{param.arg_name}' variant '{param.var_name}' "
             f"is stored with different values in {trial_db}, table '{tb}'. "
             f"(Stored: {df.loc[ind_equal, 'params'].iloc[0]}), attmpeted: {str(vals)}."
         )
@@ -227,16 +242,16 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
 
 
 def run(
-    ex: Experiment,
+    ex: ModuleType,
     debug=False,
     *,
     group=None,
     logfile="trials.db",
-    params: List[Parameter] = None,
+    params: Sequence[Parameter] = (),
     trials_folder=Path(__file__).absolute().parent / "trials",
     output_extension: str = "html",
     addl_mods_and_names: Collection[ModuleInfo] = [],
-    untracked_params: Collection[str] = None,
+    untracked_params: Collection[str] = (),
     matplotlib_dpi: int = 72,
 ):
     """Run the selected experiment.
@@ -260,7 +275,7 @@ def run(
             functional.
     """
     REPO = None if debug else git.Repo(Path.cwd(), search_parent_directories=True)
-    if not debug and REPO.is_dirty():
+    if not debug and cast(git.Repo, REPO).is_dirty():
         raise RuntimeError(
             "Git Repo is dirty.  For repeatable tests,"
             " clean the repo by committing or stashing all changes and "
@@ -276,10 +291,10 @@ def run(
             continue
         _init_variant_table(trial_db, param)
         _verify_variant_name(trial_db, param)
-    id_names = [param.id_name for param in params]
+    var_names = [param.var_name for param in params]
     arg_names = [param.arg_name for param in params]
     master_variant = "-".join(
-        [x for _, x in sorted(zip(arg_names, id_names), key=lambda pair: pair[0])]
+        [x for _, x in sorted(zip(arg_names, var_names), key=lambda pair: pair[0])]
     )
 
     iteration = (
@@ -298,7 +313,7 @@ def run(
         new_filename += ".html"
     elif output_extension == "ipynb":
         new_filename += ".ipynb"
-    commit = "0000000" if debug else REPO.head.commit.hexsha
+    commit = "0000000" if debug else cast(git.Repo, REPO).head.commit.hexsha
     exp_logger.info(
         "trial entry: insert"
         + f"--{master_variant}"
@@ -361,56 +376,28 @@ def run(
 
 
 def _run_in_notebook(
-    ex: type,
+    ex: ModuleType,
     group,
-    params,
+    params: Collection[Parameter],
     trials_folder,
     addl_mods_and_names: Collection[ModuleInfo],
     matplotlib_dpi=72,
 ):
-    run_args = {param.arg_name: param.vals for param in params if not param.modules}
+    run_args = {param.arg_name: param.var_name for param in params}
     if group is not None:
         run_args["group"] = group
 
-    pickles = {
-        param.arg_name: str(_finalize_param(param, trials_folder))
-        for param in params
-        if param.modules
-    }
-    if not isinstance(ex, ModuleType):
-        # ex is a class or something else that needs to be imported from a module
-        pickles["_ex"] = str(_finalize_param(Parameter("_ex", None, ex), trials_folder))
-    mod_names_and_paths = [
-        (mod.__name__, mod.__file__, []) for param in params for mod in param.modules
-    ]
-    mod_names_and_paths += [
-        (mod.__name__, mod.__file__, names) for mod, names in addl_mods_and_names
-    ]
-    ex_module = ex.__name__ if isinstance(ex, ModuleType) else ex.__module__
+    for param in params:
+        _finalize_param(param, trials_folder)
+    ex_module = ex.__name__
+    ex_file = ex.__file__
     code = (
         "import importlib\n"
         "import matplotlib as mpl\n"
-        "import numpy as np\n"
-        "import pickle\n"
         "import dill\n"
         "import sys\n\n"
-        f"mods = {mod_names_and_paths}\n"
-        "for modname, mod_path, names in mods:\n"
-        "  mod = importlib.import_module(modname, str(mod_path))\n"
-        "  for name in names:\n"
-        "    globals()[name] = vars(mod)[name]\n"
-        f'ex = importlib.import_module("{ex_module}")\n\n'
-        "def unpickle(file):\n"
-        "  with open(file, 'rb') as fh:\n"
-        "    obj = pickle.load(fh)\n"
-        "  return obj\n\n"
+        f"ex = importlib.import_module('{ex_module}', '{ex_file}')\n\n"
         f"args = {run_args}\n"
-        f"pickles = {pickles}\n"
-        "for a_name, a_pickle in pickles.items():\n"
-        f"  if a_name == '_ex':\n"
-        f"    ex = unpickle(a_pickle)\n"
-        f"    continue\n"
-        f"  args[a_name] = unpickle(a_pickle)\n\n"
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
         f"print(r'Imported {ex.name}')\n"
@@ -419,6 +406,15 @@ def _run_in_notebook(
 
     nb = nbformat.v4.new_notebook()
     setup_cell = nbformat.v4.new_code_cell(source=code)
+    resolve_code = (
+        "import mitosis\n"
+        "resolved_args = {}\n"
+        "for arg_name, var_name in args.items():\n"
+        "    val = mitosis._resolve_param(arg_name, var_name, ex.lookup_dict)"
+        "    resolved_args.update(arg_name, val) \n"
+        "    print(arg_name,'=',resolved_args[arg_name])\n"
+    )
+    resolve_cell = nbformat.v4.new_code_cell(source=resolve_code)
     run_cell = nbformat.v4.new_code_cell(source="results = ex.run(**args)")
     final_cell = nbformat.v4.new_code_cell(
         source=""
@@ -426,14 +422,14 @@ def _run_in_notebook(
         "  dill.dump(results, f)\n"
         "print(repr(results))\n"
     )
-    nb["cells"] = [setup_cell, run_cell, final_cell]
+    nb["cells"] = [setup_cell, resolve_cell, run_cell, final_cell]
 
     kernel_name = _create_kernel()
     ep = ExecutePreprocessor(timeout=-1, kernel=kernel_name)
     exception = None
     try:
         ep.preprocess(nb, {"metadata": {"path": trials_folder}})
-    except nbclient.client.CellExecutionError as exc:
+    except nbclient.exceptions.CellExecutionError as exc:
         exception = exc
     try:
         result_string = nb["cells"][2]["outputs"][0]["text"][:-1]
@@ -470,7 +466,8 @@ def _save_notebook(nb, filename, trials_folder, extension):
 
 def _parse_results(result_string):
     match = re.search(r"'main': (.*)}", result_string, re.DOTALL)
-    return match.group(1)
+    if match is not None:
+        return match.group(1)
 
 
 def cleanstr(obj):
