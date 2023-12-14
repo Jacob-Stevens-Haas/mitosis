@@ -1,4 +1,5 @@
 import logging
+import pprint
 import re
 import sys
 import warnings
@@ -350,6 +351,7 @@ def run(
 
     if new_filename is not None:
         _save_notebook(nb, new_filename, trials_folder, output_extension)
+        (exp_metadata_folder / "experiment").symlink_to(trials_folder / new_filename)
     else:
         warnings.warn("Logging trial and mock filename, but no file created")
 
@@ -394,6 +396,7 @@ def _run_in_notebook(
     setup_cell = nbformat.v4.new_code_cell(source=code)
     resolve_code = (
         "import mitosis\n"
+        "from pathlib import Path\n"
         "resolved_args = {}\n"
         f"for arg_name, var_name in {lookup_params}.items():\n"
         "    val = mitosis._resolve_param(arg_name, var_name, ex.lookup_dict).vals\n"
@@ -402,7 +405,9 @@ def _run_in_notebook(
         f"for arg_name, var_name in {eval_params}.items():\n"
         "    val = eval(var_name)\n"
         "    resolved_args.update({arg_name: val}) \n"
-        "    print(arg_name,'=',resolved_args[arg_name])\n"
+        "    print(arg_name,'=',resolved_args[arg_name])\n\n"
+        f"mitosis._prettyprint_config(Path('{trials_folder}'), resolved_args)\n"
+        f"print('Saving metadata to {trials_folder}')\n"
     )
     resolve_cell = nbformat.v4.new_code_cell(source=resolve_code)
     run_cell = nbformat.v4.new_code_cell(source="results = ex.run(**resolved_args)")
@@ -538,3 +543,9 @@ def _write_freezefile(folder: Path):
     req_str += "\n".join(f"{pkg}=='{version(pkg)}'" for pkg in installed)
     with open(folder / "requirements.txt", "w") as f:
         f.write(req_str)
+
+
+def _prettyprint_config(folder: Path, params: Collection[Parameter]):
+    pretty = pprint.pformat(params)
+    with open(folder / "config.txt", "w") as f:
+        f.write(pretty)
