@@ -1,5 +1,4 @@
 import logging
-import pickle
 import re
 import sys
 import warnings
@@ -102,14 +101,6 @@ def _resolve_param(
         return Parameter(var_name, arg_name, stored.vals, eval=False)
     else:
         return Parameter(var_name, arg_name, stored, eval=False)
-
-
-def _finalize_param(param: Parameter, folder: Path | str):
-    filename = "arg" + "".join(choice(list("0123456789abcde"), 9)) + ".pickle"
-    location = Path(folder) / filename
-    with open(location, "wb") as fh:
-        pickle.dump(param.vals, fh)
-    return location
 
 
 class DBHandler(logging.Handler):
@@ -343,9 +334,9 @@ def run(
     nb, metrics, exc = _run_in_notebook(
         ex,
         group,
-        params,
+        {p.arg_name: p.var_name for p in params if not p.eval},
+        {p.arg_name: p.var_name for p in params if p.eval},
         exp_metadata_folder,
-        addl_mods_and_names,
         matplotlib_dpi,
     )
 
@@ -378,17 +369,14 @@ def run(
 def _run_in_notebook(
     ex: ModuleType,
     group,
-    params: Collection[Parameter],
+    lookup_params: dict[str, str],
+    eval_params: dict[str, str],
     trials_folder,
-    addl_mods_and_names: Collection[ModuleInfo],
     matplotlib_dpi=72,
 ):
-    run_args = {param.arg_name: param.var_name for param in params}
     if group is not None:
-        run_args["group"] = group
+        lookup_params["group"] = group
 
-    for param in params:
-        _finalize_param(param, trials_folder)
     ex_module = ex.__name__
     ex_file = ex.__file__
     code = (
@@ -397,11 +385,9 @@ def _run_in_notebook(
         "import dill\n"
         "import sys\n\n"
         f"ex = importlib.import_module('{ex_module}', '{ex_file}')\n\n"
-        f"args = {run_args}\n"
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
-        f"print(r'Imported {ex.name}')\n"
-        'print(f"Running {ex.name}.run() with parameters {args}")\n'
+        'print(f"Running {ex.name}.run()")\n'
     )
 
     nb = nbformat.v4.new_notebook()
@@ -409,13 +395,17 @@ def _run_in_notebook(
     resolve_code = (
         "import mitosis\n"
         "resolved_args = {}\n"
-        "for arg_name, var_name in args.items():\n"
-        "    val = mitosis._resolve_param(arg_name, var_name, ex.lookup_dict)"
-        "    resolved_args.update(arg_name, val) \n"
+        f"for arg_name, var_name in {lookup_params}.items():\n"
+        "    val = mitosis._resolve_param(arg_name, var_name, ex.lookup_dict).vals\n"
+        "    resolved_args.update({arg_name: val}) \n"
+        "    print(arg_name,'=',resolved_args[arg_name])\n\n"
+        f"for arg_name, var_name in {eval_params}.items():\n"
+        "    val = eval(var_name)\n"
+        "    resolved_args.update({arg_name: val}) \n"
         "    print(arg_name,'=',resolved_args[arg_name])\n"
     )
     resolve_cell = nbformat.v4.new_code_cell(source=resolve_code)
-    run_cell = nbformat.v4.new_code_cell(source="results = ex.run(**args)")
+    run_cell = nbformat.v4.new_code_cell(source="results = ex.run(**resolved_args)")
     final_cell = nbformat.v4.new_code_cell(
         source=""
         f"with open(r'{trials_folder / ('results.dill')}', 'wb') as f:\n"  # noqa E501
