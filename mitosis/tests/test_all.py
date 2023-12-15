@@ -6,6 +6,7 @@ from types import ModuleType
 import pytest
 
 import mitosis
+from mitosis.tests import mock_experiment
 
 
 def test_reproduceable_dict():
@@ -118,30 +119,15 @@ def mock_experiment_mod():
     return importlib.import_module(__name__)
 
 
-def test_empty_obj_experiment(tmp_path, mock_experiment_obj, fake_param1, fake_param2):
-    mitosis.run(
-        mock_experiment_obj,
-        debug=True,
-        trials_folder=tmp_path,
-        params=[fake_param1],
-    )
-    mitosis.run(
-        mock_experiment_obj,
-        debug=True,
-        trials_folder=tmp_path,
-        params=[fake_param2],
-    )
-
-
 def test_empty_mod_experiment(tmp_path, mock_experiment_mod, fake_param1, fake_param2):
     mitosis.run(
-        mock_experiment_mod,
+        mock_experiment,
         debug=True,
         trials_folder=tmp_path,
         params=[fake_param1],
     )
     mitosis.run(
-        mock_experiment_mod,
+        mock_experiment,
         debug=True,
         trials_folder=tmp_path,
         params=[fake_param2],
