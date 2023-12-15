@@ -18,7 +18,6 @@ from types import FunctionType
 from types import MethodType
 from types import ModuleType
 from typing import Any
-from typing import cast
 from typing import Collection
 from typing import Hashable
 from typing import List
@@ -196,10 +195,9 @@ def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
     df = pd.read_sql(select(tb), eng)
     ind_equal = df.loc[:, "name"] == param.var_name
     if ind_equal.sum() == 0:
-        stmt = insert(
-            tb, values={"name": param.var_name, "params": str(vals)}  # type: ignore
-        )
-        eng.execute(stmt)  # type: ignore
+        stmt = tb.insert().values({"name": param.var_name, "params": str(vals)})
+        with eng.connect() as conn:
+            conn.execute(stmt)
     elif df.loc[ind_equal, "params"].iloc[0] != str(vals):
         raise RuntimeError(
             f"Parameter '{param.arg_name}' variant '{param.var_name}' "
@@ -235,14 +233,13 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
 
 def run(
     ex: ModuleType,
-    debug=False,
+    debug: bool = False,
     *,
-    group=None,
-    logfile="trials.db",
+    group: str | None = None,
+    logfile: Path | str = "trials.db",
     params: Sequence[Parameter] = (),
-    trials_folder=Path(__file__).absolute().parent / "trials",
+    trials_folder: Path | str = Path(__file__).absolute().parent / "trials",
     output_extension: str = "html",
-    addl_mods_and_names: Collection[ModuleInfo] = [],
     untracked_params: Collection[str] = (),
     matplotlib_dpi: int = 72,
 ):
@@ -260,27 +257,31 @@ def run(
         trials_folder (path-like): The folder to store both output and
             logfile.
         output_extension: what output type to produce using nbconvert.
-        addl_mods_and_names: Additional modules names required to
-            run experiment as well as names from those modules.
         untracked_params: names of parameters to not track in database
         matplotlib_resolution: dpi for matplotlib images.  Not yet
             functional.
     """
-    REPO = None if debug else git.Repo(Path.cwd(), search_parent_directories=True)
-    if not debug and cast(git.Repo, REPO).is_dirty():
-        raise RuntimeError(
-            "Git Repo is dirty.  For repeatable tests,"
-            " clean the repo by committing or stashing all changes and "
-            "untracked files."
-        )
-    trial_db = Path(trials_folder).absolute() / logfile
+    if debug:
+        repo = None
+        commit = "0000000"
+    else:
+        repo = git.Repo(Path.cwd(), search_parent_directories=True)
+        commit = repo.head.commit.hexsha
+        if repo.is_dirty():
+            raise RuntimeError(
+                "Git Repo is dirty.  For repeatable tests,"
+                " clean the repo by committing or stashing all changes and "
+                "untracked files."
+            )
+    trials_folder = Path(trials_folder).absolute()
+    trial_db = trials_folder / logfile
     table_name = f"trials_{ex.name}"
     if group is not None:
         table_name += f" {group}"
     exp_logger, trials_table = _init_logger(trial_db, f"trials_{ex.name}", debug)
     for param in params:
-        if debug or param.arg_name in untracked_params:
-            continue
+        # if debug or param.arg_name in untracked_params:
+        #     continue
         _init_variant_table(trial_db, param)
         _verify_variant_name(trial_db, param)
     var_names = [param.var_name for param in params]
@@ -305,7 +306,6 @@ def run(
         new_filename += ".html"
     elif output_extension == "ipynb":
         new_filename += ".ipynb"
-    commit = "0000000" if debug else cast(git.Repo, REPO).head.commit.hexsha
     exp_logger.info(
         "trial entry: insert"
         + f"--{master_variant}"
