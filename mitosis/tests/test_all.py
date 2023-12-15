@@ -93,25 +93,12 @@ def test_kernel_name():
 
 @pytest.fixture
 def fake_param1():
-    return mitosis.Parameter("test", "foo", 1)
+    return mitosis.Parameter("1", "seed", 1, evaluate=True)
 
 
 @pytest.fixture
 def fake_param2():
-    return mitosis.Parameter("test", "foo", 2)
-
-
-class MockExperiment:
-    def __init__(self):
-        self.name = "mock"
-
-    def run(self, foo):
-        return {"main": 0}
-
-
-@pytest.fixture
-def mock_experiment_obj():
-    return MockExperiment()
+    return mitosis.Parameter("test", "foo", 2, evaluate=False)
 
 
 @pytest.fixture

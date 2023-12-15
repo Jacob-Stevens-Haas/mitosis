@@ -82,7 +82,7 @@ class Parameter:
     var_name: str
     arg_name: str
     vals: Any
-    eval: bool = field(default=False, kw_only=True)
+    evaluate: bool = field(default=False, kw_only=True)
 
 
 def _split_param_str(paramstr: str) -> tuple[bool, str, str]:
@@ -99,9 +99,9 @@ def _resolve_param(
 ) -> Parameter:
     stored = lookup_dict[arg_name][var_name]
     if isinstance(stored, Parameter):
-        return Parameter(var_name, arg_name, stored.vals, eval=False)
+        return Parameter(var_name, arg_name, stored.vals, evaluate=False)
     else:
-        return Parameter(var_name, arg_name, stored, eval=False)
+        return Parameter(var_name, arg_name, stored, evaluate=False)
 
 
 class DBHandler(logging.Handler):
@@ -335,8 +335,8 @@ def run(
     nb, metrics, exc = _run_in_notebook(
         ex,
         group,
-        {p.arg_name: p.var_name for p in params if not p.eval},
-        {p.arg_name: p.var_name for p in params if p.eval},
+        {p.arg_name: p.var_name for p in params if not p.evaluate},
+        {p.arg_name: p.var_name for p in params if p.evaluate},
         exp_metadata_folder,
         matplotlib_dpi,
     )

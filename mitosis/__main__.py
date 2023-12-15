@@ -68,7 +68,7 @@ for ep in args.eval_param:
     if not track:
         untracked_args.append(arg_name)
     arg_val = eval(var_name)
-    params.append(Parameter(str(arg_val), arg_name, arg_val, eval=True))
+    params.append(Parameter(str(arg_val), arg_name, arg_val, evaluate=True))
 
 if args.param is None:
     args.param = ()
