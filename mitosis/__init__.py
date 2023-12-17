@@ -290,8 +290,8 @@ def run(
         table_name += f" {group}"
     exp_logger, trials_table = _init_logger(trial_db, f"trials_{ex.name}", debug)
     for param in params:
-        # if debug or param.arg_name in untracked_params:
-        #     continue
+        if debug or param.arg_name in untracked_params:
+            continue
         _init_variant_table(trial_db, param)
         _verify_variant_name(trial_db, param)
     var_names = [param.var_name for param in params]
