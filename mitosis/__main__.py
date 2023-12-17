@@ -27,7 +27,7 @@ parser.add_argument(
     type=str,
     default=None,
     help="Group of experiment.  This tells mitosis to store all results for a group"
-    "separately.",
+    " separately.",
 )
 parser.add_argument(
     "--folder",
@@ -86,12 +86,15 @@ else:
     trials_folder = Path(str(ex.__file__)).parent
 if not trials_folder.exists():
     trials_folder.mkdir(parents=True)
-run(
-    ex,
-    args.debug,
-    group=args.group,
-    logfile=f"trials_{args.experiment}.db",
-    params=params,
-    trials_folder=trials_folder,
-    untracked_params=untracked_args,
-)
+
+
+def main() -> None:
+    run(
+        ex,
+        args.debug,
+        group=args.group,
+        logfile=f"trials_{args.experiment}.db",
+        params=params,
+        trials_folder=trials_folder,
+        untracked_params=untracked_args,
+    )

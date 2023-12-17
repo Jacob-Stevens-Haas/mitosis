@@ -63,6 +63,9 @@ dev = [
 [project.urls]
 homepage = "https://github.com/Jacob-Stevens-Haas/mitosis"
 
+[project.scripts]
+mitosis="mitosis.__main__:main"
+
 [tool.setuptools_scm]
 
 [tool.black]
