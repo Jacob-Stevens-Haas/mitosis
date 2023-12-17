@@ -3,6 +3,7 @@ import pprint
 import re
 import sys
 import warnings
+from abc import ABCMeta
 from collections import OrderedDict
 from dataclasses import dataclass
 from dataclasses import field
@@ -22,7 +23,7 @@ from typing import Collection
 from typing import Hashable
 from typing import List
 from typing import Mapping
-from typing import Optional
+from typing import Protocol
 from typing import Sequence
 
 import git
@@ -46,7 +47,16 @@ from sqlalchemy import String
 from sqlalchemy import Table
 from sqlalchemy import update
 
-ModuleInfo = list[tuple[ModuleType, Optional[Collection[str]]]]
+
+class _ExpRun(Protocol):
+    def __call__(self, *args: Any) -> dict:
+        ...
+
+
+class Experiment(ModuleType, metaclass=ABCMeta):
+    name: str
+    lookup_dict: dict[str, dict[str, Any]]
+    run: _ExpRun
 
 
 def trials_columns():
@@ -232,7 +242,7 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
 
 
 def run(
-    ex: ModuleType,
+    ex: Experiment,
     debug: bool = False,
     *,
     group: str | None = None,
@@ -369,7 +379,7 @@ def run(
 
 
 def _run_in_notebook(
-    ex: ModuleType,
+    ex: Experiment,
     group,
     lookup_params: dict[str, str],
     eval_params: dict[str, str],

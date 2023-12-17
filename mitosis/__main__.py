@@ -1,9 +1,11 @@
 import argparse
 from importlib import import_module
 from pathlib import Path
+from typing import cast
 
 from . import _resolve_param
 from . import _split_param_str
+from . import Experiment
 from . import Parameter
 from . import run
 
@@ -56,7 +58,7 @@ parser.add_argument(
     ),
 )
 args = parser.parse_args()
-ex = import_module(args.experiment)
+ex = cast(Experiment, import_module(args.experiment))
 params = []
 
 untracked_args: list[str] = []
