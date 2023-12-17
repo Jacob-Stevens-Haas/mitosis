@@ -36,7 +36,7 @@ parser.add_argument(
     "-F",
     type=str,
     default=None,
-    help="Where to save trials.",
+    help="Where to save trials, relative to the experiment module folder",
 )
 parser.add_argument(
     "--eval-param",
@@ -85,7 +85,7 @@ for param in args.param:
 if args.folder is None:
     trials_folder = Path(".").resolve()
 else:
-    trials_folder = Path(str(ex.__file__)).parent
+    trials_folder = Path(str(ex.__file__)).parent / args.folder
 if not trials_folder.exists():
     trials_folder.mkdir(parents=True)
 
