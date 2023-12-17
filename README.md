@@ -152,8 +152,8 @@ experiment database or deleting records in the `variant_param_name` table.
 If your experimental code is intended to be used for multiple dissimilar
 experiments and want to track results separately, assign a group at the command
 line.  The string is passed as an argument "group" to the experiment's run()
-function.  It is treated as a special lookup parameter, so its meaning must
-be in an experiment's `lookup_dict`.
+function.  It is treated as a special eval parameter, so if passed, there must
+be no other params named group
 
 Group is more complex, but a simple example will help:
 ```

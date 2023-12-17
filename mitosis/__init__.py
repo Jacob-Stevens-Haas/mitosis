@@ -286,8 +286,10 @@ def run(
     trials_folder = Path(trials_folder).absolute()
     trial_db = trials_folder / logfile
     table_name = f"trials_{ex.name}"
+    params = list(params)
     if group is not None:
         table_name += f" {group}"
+        params.append(Parameter(f"'{group}'", "group", group, evaluate=True))
     exp_logger, trials_table = _init_logger(trial_db, f"trials_{ex.name}", debug)
     for param in params:
         if debug or param.arg_name in untracked_params:
@@ -344,7 +346,6 @@ def run(
 
     nb, metrics, exc = _run_in_notebook(
         ex,
-        group,
         {p.arg_name: p.var_name for p in params if not p.evaluate},
         {p.arg_name: p.var_name for p in params if p.evaluate},
         exp_metadata_folder,
@@ -380,15 +381,11 @@ def run(
 
 def _run_in_notebook(
     ex: Experiment,
-    group,
     lookup_params: dict[str, str],
     eval_params: dict[str, str],
     trials_folder,
     matplotlib_dpi=72,
 ):
-    if group is not None:
-        lookup_params["group"] = group
-
     ex_module = ex.__name__
     ex_file = ex.__file__
     code = (
