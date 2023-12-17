@@ -78,9 +78,7 @@ for param in args.param:
     track, arg_name, var_name = _split_param_str(param)
     if not track:
         untracked_args.append(arg_name)
-    params += [
-        _resolve_param(arg_name, var_name, ex.lookup_dict) for param in args.param
-    ]
+    params += [_resolve_param(arg_name, var_name, ex.lookup_dict)]
 
 if args.folder is None:
     trials_folder = Path(".").resolve()
