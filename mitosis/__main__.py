@@ -100,3 +100,6 @@ def main() -> None:
         trials_folder=trials_folder,
         untracked_params=untracked_args,
     )
+
+
+main()
