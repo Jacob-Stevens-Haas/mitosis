@@ -19,11 +19,12 @@ different commits, parameterizations, and random seed.
     import numpy as np
 
     name = "sine-exp"
+    lookup_dict = {"frequency": {"fast": 10, "slow": 1}}
 
-    def run(seed, amplitude):
+    def run(seed, amplitude, frequency):
         """Deterimne if the maximum value of the sine function equals ``amplitude``"""
         x = np.arange(0, 10, .05)
-        y = amplitude * np.sin(x)
+        y = amplitude * np.sin(frequency * x)
         err = np.abs(max(y) - amplitude)
         return {"main": err}
 
@@ -35,17 +36,21 @@ different commits, parameterizations, and random seed.
     from pathlib import Path
 
     folder = Path(".").resolve()
-    params = [mitosis.Parameter("my_variant", "amplitude", 4)]
+    params = [
+        mitosis.Parameter("4", "amplitude", 4, evaluate=True)
+        mitosis.Parameter("slow", "frequency", 4, evaluate=False)
+    ]
 
     mitosis.run(sine_experiment, params=params, trials_folder=folder)
 
 Commit these changes to a repository.  Mitosis will run `sin_experiment.run()`, saving
 all output as an html file in the current directory.  It will also
 track the parameters and results.
-If you later change the variant named "my_variant" to set amplitude=3, mitosis will
+If you later change the variant named "slow" to set frequency=.1, mitosis will
 raise a RuntimeError, preventing you from running a trial.  If you want to run
 `sine_experiment` with a different parameter value, you need to name that variant
-something new.
+something new.  Parameters like "amplitude", on the other hand, behave differently.
+Rather than being specified by `lookup_dict`, they are evaluated directly.
 
 # How it Works
 
@@ -57,6 +62,8 @@ The first time `mitosis.run()` is passed a new experiment, it takes several acti
 3. Add tables to track all of the different variants of your experiment.
 4. Create and run a jupyter notebook in memory, saving the result as an HTML file
 5. Updating the database of all trials with the results of the experiment.
+6. Save experiment config of parameters actually created by jupyter notebook
+7. Save a freezefile of python packages installed.
 
 In step 3, `mitosis` attempts to create a unique and reproduceable string from each
 parameter value.  This is tricky, since most python objects are mutable and/or have
@@ -67,26 +74,10 @@ section for comments on the edge cases where `mitosis` will either treat the sam
 parameter as a new variant, or treat two different parameters as having the same value.
 
 In step 4, `mitosis` needs to start the jupyter notebook with the appropriate variables.
-For string variables or ones whose `repr()` can fully recreate the object, `mitosis` can
-simply create a cell with the appropriate string.  For more complex objects, `mitosis`
-will attempt to `pickle` the data and send it to the notebook.  For that purpose,
-`mitosis.Parameter` allows the user to pass a list of modules required in unpickling.
-Within the jupyter notebook, these modules are imported before the unpickling.  A user
-can choose to send the argument to the notebook via pickle instead of string by adding
-modules to the `mitosis.Parameter`.  In the example above, it would be:
+Instead of sending the variables to the notebook, the notebook re-evaluates eval
+parameters and re-looks up lookup parameters.  Previously, parameters were sent
+to the notebook via pickle; that proved fragile.
 
-*in script (not interpreter)*
-
-    import importlib
-    import mitosis
-    import sine_experiment
-    from pathlib import Path
-
-    this_module = importlib.import_module(__name__)
-    folder = Path(".").resolve()
-    params = [mitosis.Parameter("my_variant", "amplitude", 4, [this_module])]
-
-    mitosis.run(sine_experiment, params=params, trials_folder=folder)
 
 The next time `mitosis.run()` is given the same experiment, it will
 1. Determine whether parameter names and values match parameters in a previously established
@@ -94,26 +85,28 @@ variant.  If they do not, it will either:
    1. Reject the experiment trial if the passed parameter names match existing variants
    but with different values.
    2. Create a new variant for the parameter.
-1. do steps 4 and 5 above.
+1. do steps 4 to 7 above.
 
 
 ## Abstractions
 
-**Experiment** :the definition of a procedure that will test a hypothesis.  In its
-current form, `mitosis` does not require a hypothesis, but it does require experiments
-to define the "main" metric worth evaluating (though a user can always define an
-experiment that merely returns a constant).  As a python object, an experiment must have
-a `Callable` attribute named "run" that takes any number of arguments and returns a dict
-with at least a key named "main".  It also requires a `name` attribute
+**Experiment** :the definition of a procedure that will test a hypothesis.
+As a python object, an experiment must have a `Callable` attribute named "run"
+that takes any number of arguments and returns a dict with at least a key named
+"main".  It also requires a `name` attribute
+
+In its current form, `mitosis` does not require a hypothesis, but it does
+require experiments to define the "main" metric worth evaluating (though a
+user can always define an experiment that merely returns a constant).
 
 **Parameter**: An argument to an experiment.  These are the axes by which an experiment
 may vary, e.g. `sim_params`, `data_params`, `solver_params`... etc.  When this argument
 is a `Collection`, sometimes the singular (parameter) and plural (parameters) are used
-interchangeably.
+interchangeably.  Parameters can either be lookup parameters (which require the
+experiment to have an attribute `lookup_dict`) or eval parameters (which are typically
+simple evaluations, e.g. setting the random seed to a given integer).
 
 **Variant**: An experimental parameter assigned to specific values and given a name.
-Within `mitosis`, the association of a `Parameter` class to an experiment refers to
-a variant.
 
 **Trial**: a single run of an experiment with all variants specified.  Within `mitosis`,
 the name of a trial is the experiment name, concatenated with variant names for each
@@ -126,7 +119,50 @@ the trial re-run with the same parameters, the new trial would be named
 Within `mitosis`, the trial is used to name the resulting html file and is stored in
 the "variant" and "iteration" columns in the experiment's sqlite database.
 
-## A More Advanced Workflow
+# CLI
+
+See [an example](https://github.com/Jacob-Stevens-Haas/gen-experiments).
+
+## Untracked parameters
+
+If there are certain parameters that are not worth tracking, e.g. plotting flags
+that do not change the mathematical results, prepend the argument name with "-".
+An example:
+
+```
+mitosis project_pkg.exp1 -e -plot=True -p -plot_axes=dense
+```
+
+## Fast iterations: Debug
+
+Debug is straightforwards: `mitosis project_pkg.exp1 -d ...` runs in debug mode.
+This arg allows you to run experiments in a dirty git repository (or no repository)
+and will neither save results in the experimental database, nor increment the trials
+counter, nor verify/lock in the definitions of any variants.  It will, however,
+create the output notebook.
+
+Early experiment prototyping involves quickly iterating on parameter lists and
+complexity.  `mitosis` will still lock in definitions of variants, which means
+that you will likely go through variant names quickly.  This disambiguation is
+somewhat intentional, but you can free up names by deleting or renaming the
+experiment database or deleting records in the `variant_param_name` table.
+
+## Sharing code between experiments: Group
+
+If your experimental code is intended to be used for multiple dissimilar
+experiments and want to track results separately, assign a group at the command
+line.  The string is passed as an argument "group" to the experiment's run()
+function.  It is treated as a special lookup parameter, so its meaning must
+be in an experiment's `lookup_dict`.
+
+Group is more complex, but a simple example will help:
+```
+mitosis project_pkg.pdes -g heat -p initial_condition=origin-bump
+mitosis project_pkg.pdes -g heat2d -p initial_condition=origin-bump2d
+mitosis project_pkg.gridsearch -g pdes-heat -p initial_condition=origin-bump
+```
+
+# A More Advanced Workflow
 
 As soon as a research project can define a single `run()` function that specifies
 an experiment, the axes/parameters by which trials differ, and the output to
@@ -137,90 +173,32 @@ I have found the following structure useful:
     |-- .git                As well as all other project files, e.g. tests/
     |                       pyproject.toml, .pre-commit-config.yaml...
     |-- project_pkg/
-        |-- __init__.py     The definitions of variant names and values as dicts
-        |-- __main__.py     An argparser that imports project_pkg to resolve arg
-        |                   names into python objects and then passes them to
-        |                   mitosis.run()
+        |-- __init__.py     The definitions of variant names that are common
+        |                   to multiple experiments and referenced in each
+        |                   experiment's lookup_dict
         |-- exp1.py         One experiment to run
+        |-- exp2.py         Another experiment to run
         |-- _common.py      or _utils.py.py, basically anything needed by
         |                   other expermints such as common plotting functions
         |-- trials/         The folder passed to mitosis.run() to store results
 
 Most of this is common across all packages and is basic engineering discipline.
-What this allows from an experimental standpoint, however, is a command line
-call signature like:
+If project_pkg is installed, it allows mitosis's CLI to be called as:
 
 ```
-nohup python -m project_pkg --exp_name exp1 --seed 2 --param exp_params=var_a &> exp.log &
+mitosis project_pkg.exp1 --eval-param seed=2 --param exp_params=var_a
 ```
-It also allows building other wrappers in between exp1 and mitosis, such as a
-gridsearch.
+It is also common to have one experiment wrap another, e.g. if exp2 is a gridsearch
+around exp1.
+
 I typically run experiments on servers, so `nohup ... &> exp.log &` frees up the
 terminal and lets me disconnect ssh, returning later and reading exp.log to see
 that the experiment worked or what errors occurred
-(if inside the experiment and not inside `mitosis`, they will also be visible in
-the generated html notebook). If I have a variety of experiments that I want to
-run, I can copy and paste a lot of experiments all at once into the terminal,
-and they will all execute in parallel.
-
-If any of the parameters include non-primitive python objects, the
-`mitosis.Parameter` object needs to include a list of modules where those
-objects are defined.  This reflects the *de rigueur* behavior of python object
-(de)serialization, which `mitosis` uses to pass the arguments to the notebook
-process running in memory.  See the documentation of the `pickle` module.
-If some of your objects are classes in `__init__.py`, you can use the idiom for
-a module to refer to itself:
-
-*\_\_init\_\_.py*
-
-    from importlib import import_module
-
-    this_module = import_module(__name__)
-    class Foo: pass
-    first_param = {"test": Parameter("my_variant", "argname", Foo(), [this_module])}
-
-
-*\_\_main\_\_.py*
-
-    import argparse
-    import mitosis
-    import project_pkg
-
-    parser = argparse.ArgumentParser("Project_pkg experiment runner")
-    parser.add_argument("--param", action="append")
-    args = parser.parse_args()
-    trials_folder = Path(".").resolve() / "trials"
-    params: list[mitosis.Parameter] = []
-    for param in args.param:
-        arg_name, var_name = param.split("=")
-        params.append(getattr(project_pkg, arg_name)[var_name])
-    mitosis.run(
-        project_pkg.exp1,
-        debug=False,
-        seed=2,
-        params=params,
-        trials_folder=trials_folder
-    )
-
-Then, the following code works:
-
-    python -m project_pkg --param first_param=test
-
-
-When developing and expanding experiments, it helps to allow a `debug` argument
-in `__main__.py` so as to pass through to `mitosis.run()`.  This arg allows you
-to run experiments in a dirty git repository (or no repository) and will neither
-save results in the experimental database, nor increment the trials counter, nor
-verify/lock in the definitions of any variants.  It will, however, create the
-output notebook.
-
-Early experiment prototyping involves quickly iterating on parameter lists and
-complexity.  `mitosis` will still lock in definitions of variants, which means
-that you will likely go through variant names quickly.  This disambiguation is
-somewhat intentional, but you can free up names by deleting or renaming the
-experiment database or deleting records in the `variant_param_name` table.
-
-See [an example](https://github.com/Jacob-Stevens-Haas/gen-experiments).
+(if error occurs inside the experiment and not inside `mitosis`, they will also
+be visible in the generated html notebook).
+If I have a variety of experiments that I want to run, I can copy and paste a
+lot of experiments all at once into the terminal, and they will all execute in
+parallel.
 
 # Reproduceability Thoughts
 
