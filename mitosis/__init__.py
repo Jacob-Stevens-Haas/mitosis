@@ -1,6 +1,5 @@
 import logging
 import pprint
-import re
 import sys
 import warnings
 from abc import ABCMeta
@@ -434,10 +433,10 @@ def _run_in_notebook(
     except nbclient.exceptions.CellExecutionError as exc:
         exception = exc
     try:
-        result_string = nb["cells"][2]["outputs"][0]["text"][:-1]
-        metrics = _parse_results(result_string)
-    except (IndexError, KeyError):
-        metrics = None
+        result_string = nb["cells"][-1]["outputs"][0]["text"][:-1]
+        metrics = eval(result_string)["main"]
+    except Exception:
+        metrics = "exception in parsing output"
     return nb, metrics, exception
 
 
@@ -464,12 +463,6 @@ def _save_notebook(nb, filename, trials_folder, extension):
             nbformat.write(nb, f)
     else:
         raise ValueError
-
-
-def _parse_results(result_string):
-    match = re.search(r"'main': (.*)}", result_string, re.DOTALL)
-    if match is not None:
-        return match.group(1)
 
 
 def cleanstr(obj):

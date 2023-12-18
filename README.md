@@ -104,7 +104,8 @@ may vary, e.g. `sim_params`, `data_params`, `solver_params`... etc.  When this a
 is a `Collection`, sometimes the singular (parameter) and plural (parameters) are used
 interchangeably.  Parameters can either be lookup parameters (which require the
 experiment to have an attribute `lookup_dict`) or eval parameters (which are typically
-simple evaluations, e.g. setting the random seed to a given integer).
+simple evaluations, e.g. setting the random seed to a given integer).  Eval parameters
+which are strings need quotes.
 
 **Variant**: An experimental parameter assigned to specific values and given a name.
 
