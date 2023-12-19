@@ -32,7 +32,7 @@ import pandas as pd
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers.files import FilesWriter
-from numpy import array  # noqa: F401 used in an eval() in _parse_results()
+from numpy import array  # noqa: F401 used in an eval() for result string
 from numpy.random import choice
 from sqlalchemy import Column
 from sqlalchemy import create_engine
@@ -240,6 +240,35 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
         return df["iteration"].max() + 1
 
 
+def _identify_cwd_commit_hash() -> str:
+    repo = git.Repo(Path.cwd(), search_parent_directories=True)
+    if repo.is_dirty():
+        raise RuntimeError(
+            "Git Repo is dirty.  For repeatable tests,"
+            " clean the repo by committing or stashing all changes and "
+            "untracked files."
+        )
+    return repo.head.commit.hexsha
+
+
+def _lock_in_variant(
+    params: Sequence[Parameter],
+    untracked_params: Collection[str],
+    trial_db: Path,
+    debug: bool,
+) -> str:
+    for param in params:
+        if debug or param.arg_name in untracked_params:
+            continue
+        _init_variant_table(trial_db, param)
+        _verify_variant_name(trial_db, param)
+    var_names = [param.var_name for param in params]
+    arg_names = [param.arg_name for param in params]
+    return "-".join(
+        [x for _, x in sorted(zip(arg_names, var_names), key=lambda pair: pair[0])]
+    )
+
+
 def run(
     ex: Experiment,
     debug: bool = False,
@@ -270,47 +299,32 @@ def run(
         matplotlib_resolution: dpi for matplotlib images.  Not yet
             functional.
     """
+
     if debug:
-        repo = None
         commit = "0000000"
     else:
-        repo = git.Repo(Path.cwd(), search_parent_directories=True)
-        commit = repo.head.commit.hexsha
-        if repo.is_dirty():
-            raise RuntimeError(
-                "Git Repo is dirty.  For repeatable tests,"
-                " clean the repo by committing or stashing all changes and "
-                "untracked files."
-            )
+        commit = _identify_cwd_commit_hash()
+
     trials_folder = Path(trials_folder).absolute()
     trial_db = trials_folder / logfile
+    master_variant = _lock_in_variant(params, untracked_params, trial_db, debug)
+
     table_name = f"trials_{ex.name}"
     params = list(params)
     if group is not None:
         table_name += f" {group}"
         params.append(Parameter(f"'{group}'", "group", group, evaluate=True))
-    exp_logger, trials_table = _init_logger(trial_db, f"trials_{ex.name}", debug)
-    for param in params:
-        if debug or param.arg_name in untracked_params:
-            continue
-        _init_variant_table(trial_db, param)
-        _verify_variant_name(trial_db, param)
-    var_names = [param.var_name for param in params]
-    arg_names = [param.arg_name for param in params]
-    master_variant = "-".join(
-        [x for _, x in sorted(zip(arg_names, var_names), key=lambda pair: pair[0])]
-    )
-
+    exp_logger, trials_table = _init_logger(trial_db, table_name, debug)
     iteration = (
         0 if debug else _id_variant_iteration(trial_db, trials_table, master_variant)
     )
-    debug_suffix = "_" + "".join(choice(list("0123456789abcde"), 6))
     new_filename = f"trial_{ex.name}"
     if group is not None:
         new_filename += f"_{group}"
-    new_filename += f"_{master_variant}_{iteration}"
+    rand_key = "".join(choice(list("0123456789abcde"), 6))
+    new_filename += f"_{master_variant}_{iteration}_{rand_key}"
     if debug:
-        new_filename += debug_suffix
+        new_filename += "debug"
     if output_extension is None:
         new_filename = None
     elif output_extension == "html":
@@ -338,7 +352,9 @@ def run(
         log_msg += ".  In debugging mode."
     exp_logger.info(log_msg)
 
-    exp_metadata_name = datetime.now().astimezone().strftime(r"%Y-%m-%d") + debug_suffix
+    exp_metadata_name = (
+        datetime.now().astimezone().strftime(r"%Y-%m-%d") + f"_{rand_key}"
+    )
     exp_metadata_folder = trials_folder / exp_metadata_name
     exp_metadata_folder.mkdir()
     _write_freezefile(exp_metadata_folder)
