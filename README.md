@@ -127,11 +127,11 @@ See [an example](https://github.com/Jacob-Stevens-Haas/gen-experiments).
 ## Untracked parameters
 
 If there are certain parameters that are not worth tracking, e.g. plotting flags
-that do not change the mathematical results, prepend the argument name with "-".
+that do not change the mathematical results, prepend the argument name with "!".
 An example:
 
 ```
-mitosis project_pkg.exp1 -e -plot=True -p -plot_axes=dense
+mitosis project_pkg.exp1 -e !plot=True -p !plot_axes=dense
 ```
 
 ## Fast iterations: Debug

@@ -96,7 +96,7 @@ class Parameter:
 def _split_param_str(paramstr: str) -> tuple[bool, str, str]:
     arg_name, var_name = paramstr.split("=")
     track = True
-    if arg_name[0] == "-":
+    if arg_name[0] == "!":
         track = False
         arg_name = arg_name[1:]
     return track, arg_name, var_name
