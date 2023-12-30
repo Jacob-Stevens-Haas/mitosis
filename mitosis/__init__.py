@@ -400,7 +400,7 @@ def _run_in_notebook(
     eval_params: dict[str, str],
     trials_folder,
     matplotlib_dpi=72,
-):
+) -> tuple[nbformat.NotebookNode, Any, Exception | None]:
     ex_module = ex.__name__
     ex_file = ex.__file__
     code = (
@@ -444,6 +444,7 @@ def _run_in_notebook(
     kernel_name = _create_kernel()
     ep = ExecutePreprocessor(timeout=-1, kernel=kernel_name)
     exception = None
+    metrics = None
     try:
         ep.preprocess(nb, {"metadata": {"path": trials_folder}})
         try:
