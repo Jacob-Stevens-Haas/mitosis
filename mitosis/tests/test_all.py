@@ -5,6 +5,7 @@ from types import ModuleType
 import pytest
 
 import mitosis
+from mitosis.tests import bad_return_experiment
 from mitosis.tests import mock_experiment
 
 
@@ -113,6 +114,16 @@ def test_empty_mod_experiment(tmp_path, fake_eval_param, fake_lookup_param):
         trials_folder=tmp_path,
         params=[fake_lookup_param],
     )
+
+
+def test_malfored_return_experiment(tmp_path):
+    with pytest.raises(TypeError, match="'int' object is not subscriptable"):
+        mitosis.run(
+            bad_return_experiment,
+            debug=True,
+            trials_folder=tmp_path,
+            params=[],
+        )
 
 
 def test_cli(tmp_path):

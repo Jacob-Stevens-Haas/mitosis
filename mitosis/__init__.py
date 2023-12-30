@@ -446,13 +446,15 @@ def _run_in_notebook(
     exception = None
     try:
         ep.preprocess(nb, {"metadata": {"path": trials_folder}})
+        try:
+            result_string = nb["cells"][-1]["outputs"][0]["text"][:-1]
+            metrics = eval(result_string)["main"]
+        except Exception as exc:
+            metrics = "exception in parsing output"
+            exception = exc
+            print(type(exc), exc.args)
     except nbclient.exceptions.CellExecutionError as exc:
         exception = exc
-    try:
-        result_string = nb["cells"][-1]["outputs"][0]["text"][:-1]
-        metrics = eval(result_string)["main"]
-    except Exception:
-        metrics = "exception in parsing output"
     return nb, metrics, exception
 
 
