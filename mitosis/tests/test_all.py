@@ -1,4 +1,3 @@
-import importlib
 import subprocess
 import sys
 from types import ModuleType
@@ -92,32 +91,27 @@ def test_kernel_name():
 
 
 @pytest.fixture
-def fake_param1():
+def fake_eval_param():
     return mitosis.Parameter("1", "seed", 1, evaluate=True)
 
 
 @pytest.fixture
-def fake_param2():
+def fake_lookup_param():
     return mitosis.Parameter("test", "foo", 2, evaluate=False)
 
 
-@pytest.fixture
-def mock_experiment_mod():
-    return importlib.import_module(__name__)
-
-
-def test_empty_mod_experiment(tmp_path, mock_experiment_mod, fake_param1, fake_param2):
+def test_empty_mod_experiment(tmp_path, fake_eval_param, fake_lookup_param):
     mitosis.run(
         mock_experiment,
         debug=True,
         trials_folder=tmp_path,
-        params=[fake_param1],
+        params=[fake_eval_param],
     )
     mitosis.run(
         mock_experiment,
         debug=True,
         trials_folder=tmp_path,
-        params=[fake_param2],
+        params=[fake_lookup_param],
     )
 
 
