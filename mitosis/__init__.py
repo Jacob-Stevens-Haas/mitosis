@@ -22,6 +22,7 @@ from typing import Collection
 from typing import Hashable
 from typing import List
 from typing import Mapping
+from typing import Optional
 from typing import Protocol
 from typing import Sequence
 
@@ -53,6 +54,8 @@ class _ExpRun(Protocol):
 
 
 class Experiment(ModuleType, metaclass=ABCMeta):
+    __name__: str
+    __file__: str
     name: str
     lookup_dict: dict[str, dict[str, Any]]
     run: _ExpRun
@@ -280,7 +283,7 @@ def run(
     output_extension: str = "html",
     untracked_params: Collection[str] = (),
     matplotlib_dpi: int = 72,
-):
+) -> Optional[str]:
     """Run the selected experiment.
 
     Arguments:
@@ -298,6 +301,9 @@ def run(
         untracked_params: names of parameters to not track in database
         matplotlib_resolution: dpi for matplotlib images.  Not yet
             functional.
+
+    Returns:
+        The chosen main metric of the experiment
     """
 
     if debug:
@@ -392,6 +398,7 @@ def run(
     )
     if exc is not None:
         raise exc
+    return metrics
 
 
 def _run_in_notebook(
@@ -400,7 +407,7 @@ def _run_in_notebook(
     eval_params: dict[str, str],
     trials_folder,
     matplotlib_dpi=72,
-) -> tuple[nbformat.NotebookNode, Any, Exception | None]:
+) -> tuple[nbformat.NotebookNode, Optional[str], Optional[Exception]]:
     ex_module = ex.__name__
     ex_file = ex.__file__
     code = (
@@ -433,13 +440,14 @@ def _run_in_notebook(
     )
     resolve_cell = nbformat.v4.new_code_cell(source=resolve_code)
     run_cell = nbformat.v4.new_code_cell(source="results = ex.run(**resolved_args)")
-    final_cell = nbformat.v4.new_code_cell(
+    result_cell = nbformat.v4.new_code_cell(
         source=""
         f"with open(r'{trials_folder / ('results.dill')}', 'wb') as f:\n"  # noqa E501
         "  dill.dump(results, f)\n"
         "print(repr(results))\n"
     )
-    nb["cells"] = [setup_cell, resolve_cell, run_cell, final_cell]
+    metrics_cell = nbformat.v4.new_code_cell(source="print(results['main'])")
+    nb["cells"] = [setup_cell, resolve_cell, run_cell, result_cell, metrics_cell]
 
     kernel_name = _create_kernel()
     ep = ExecutePreprocessor(timeout=-1, kernel=kernel_name)
@@ -447,13 +455,7 @@ def _run_in_notebook(
     metrics = None
     try:
         ep.preprocess(nb, {"metadata": {"path": trials_folder}})
-        try:
-            result_string = nb["cells"][-1]["outputs"][0]["text"][:-1]
-            metrics = eval(result_string)["main"]
-        except Exception as exc:
-            metrics = "exception in parsing output"
-            exception = exc
-            print(type(exc), exc.args)
+        metrics = nb["cells"][-1]["outputs"][0]["text"][:-1]
     except nbclient.exceptions.CellExecutionError as exc:
         exception = exc
     return nb, metrics, exception

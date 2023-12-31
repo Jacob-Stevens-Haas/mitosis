@@ -2,6 +2,7 @@ import subprocess
 import sys
 from types import ModuleType
 
+import nbclient.exceptions
 import pytest
 
 import mitosis
@@ -102,22 +103,24 @@ def fake_lookup_param():
 
 
 def test_empty_mod_experiment(tmp_path, fake_eval_param, fake_lookup_param):
-    mitosis.run(
+    result = mitosis.run(
         mock_experiment,
         debug=True,
         trials_folder=tmp_path,
         params=[fake_eval_param],
     )
-    mitosis.run(
+    assert result == "0"
+    result = mitosis.run(
         mock_experiment,
         debug=True,
         trials_folder=tmp_path,
         params=[fake_lookup_param],
     )
+    assert result == "0"
 
 
 def test_malfored_return_experiment(tmp_path):
-    with pytest.raises(TypeError, match="'int' object is not subscriptable"):
+    with pytest.raises(nbclient.exceptions.CellExecutionError):
         mitosis.run(
             bad_return_experiment,
             debug=True,
