@@ -1,12 +1,19 @@
 name: Release
 on:
-  release:
-    types:
-      - published
+  push:
+    tags:
+      - '**'
 
 jobs:
+  print-context:
+    runs-on: ubuntu-latest
+    steps:
+      - name: print-gh-context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: echo "$GITHUB_CONTEXT"
+
   pypi-publish:
-    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags') }}
     name: Deploy release to PyPI
     runs-on: ubuntu-latest
     environment:
@@ -28,4 +35,4 @@ jobs:
       - name: Build package
         run: python -m build .
       - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1.8.11
+        uses: pypa/gh-action-pypi-publish@v1.8.11
