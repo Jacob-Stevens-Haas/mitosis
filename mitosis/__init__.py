@@ -26,6 +26,7 @@ from typing import Optional
 from typing import Protocol
 from typing import Sequence
 
+import dill
 import git
 import nbclient.exceptions
 import nbformat
@@ -94,6 +95,17 @@ class Parameter:
     arg_name: str
     vals: Any
     evaluate: bool = field(default=False, kw_only=True)
+
+
+def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
+    if trials_folder is None:
+        trials_folder = Path().absolute()
+    else:
+        trials_folder = Path(trials_folder).resolve()
+    for trial in trials_folder.glob(f"*{hexstr}"):
+        with open(trial / "results.dill", "rb") as fh:
+            return dill.load(fh)
+    raise FileNotFoundError(f"Could not find a trial that matched {hexstr}")
 
 
 def _split_param_str(paramstr: str) -> tuple[bool, str, str]:
