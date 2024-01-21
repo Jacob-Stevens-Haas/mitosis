@@ -28,28 +28,17 @@ different commits, parameterizations, and random seed.
         err = np.abs(max(y) - amplitude)
         return {"main": err}
 
-*in interpreter or script*
+Commit these changes to a repository.  After installing sine_experiment as a python package, in CLI, run:
 
+    mitosis sine_experiment --param frequency=slow --eval-param amplitude=4
 
-    import mitosis
-    import sine_experiment
-    from pathlib import Path
-
-    folder = Path(".").resolve()
-    params = [
-        mitosis.Parameter("4", "amplitude", 4, evaluate=True)
-        mitosis.Parameter("slow", "frequency", 4, evaluate=False)
-    ]
-
-    mitosis.run(sine_experiment, params=params, trials_folder=folder)
-
-Commit these changes to a repository.  Mitosis will run `sin_experiment.run()`, saving
+Mitosis will run `sin_experiment.run()`, saving
 all output as an html file in the current directory.  It will also
 track the parameters and results.
-If you later change the variant named "slow" to set frequency=.1, mitosis will
-raise a RuntimeError, preventing you from running a trial.  If you want to run
+If you later change the variant named "slow" to set frequency=2, mitosis will
+raise a `RuntimeError`, preventing you from running a trial.  If you want to run
 `sine_experiment` with a different parameter value, you need to name that variant
-something new.  Parameters like "amplitude", on the other hand, behave differently.
+something new.  Eval parameters, like "amplitude" in the example, behave differently.
 Rather than being specified by `lookup_dict`, they are evaluated directly.
 
 # How it Works
@@ -60,10 +49,12 @@ The first time `mitosis.run()` is passed a new experiment, it takes several acti
 1. Create a database for your experiment in `trials_folder`
 2. Add a table to track all of the experiment trials
 3. Add tables to track all of the different variants of your experiment.
-4. Create and run a jupyter notebook in memory, saving the result as an HTML file
-5. Updating the database of all trials with the results of the experiment.
-6. Save experiment config of parameters actually created by jupyter notebook
-7. Save a freezefile of python packages installed.
+4. Create a folder for the trial to store metadata.
+5. Create and run a jupyter notebook in memory, saving the result as an HTML file
+6. Updating the database of all trials with the results of the experiment.
+7. Save experiment config of parameters actually created by jupyter notebook (in metadata folder)
+8. Save a freezefile of python packages installed (in metadata folder)
+9. Save the experiments results (in metadata folder)
 
 In step 3, `mitosis` attempts to create a unique and reproduceable string from each
 parameter value.  This is tricky, since most python objects are mutable and/or have
@@ -73,31 +64,30 @@ custom `__str__()` attribute.  This is imperfectly done, see the **Reproduceabil
 section for comments on the edge cases where `mitosis` will either treat the same
 parameter as a new variant, or treat two different parameters as having the same value.
 
-In step 4, `mitosis` needs to start the jupyter notebook with the appropriate variables.
+In step 5, `mitosis` needs to start the jupyter notebook with the appropriate variables.
 Instead of sending the variables to the notebook, the notebook re-evaluates eval
 parameters and re-looks up lookup parameters.  Previously, parameters were sent
 to the notebook via pickle; that proved fragile.
 
-
 The next time `mitosis.run()` is given the same experiment, it will
 1. Determine whether parameter names and values match parameters in a previously established
 variant.  If they do not, it will either:
-   1. Reject the experiment trial if the passed parameter names match existing variants
+   1. Reject the trial if the passed variant names match existing variants
    but with different values.
    2. Create a new variant for the parameter.
-1. do steps 4 to 7 above.
+1. do steps 4 to 9 above.
 
 
 ## Abstractions
 
-**Experiment** :the definition of a procedure that will test a hypothesis.
+**Experiment:** the definition of a procedure that will test a hypothesis.
 As a python object, an experiment must have a `Callable` attribute named "run"
 that takes any number of arguments and returns a dict with at least a key named
-"main".  It also requires a `name` attribute
+"main".  It also requires a `name` and `lookup_dict` attribute.
 
 In its current form, `mitosis` does not require a hypothesis, but it does
 require experiments to define the "main" metric worth evaluating (though a
-user can always define an experiment that merely returns a constant).
+user can always define an experiment that sets the main metric to a constant).
 
 **Parameter**: An argument to an experiment.  These are the axes by which an experiment
 may vary, e.g. `sim_params`, `data_params`, `solver_params`... etc.  When this argument
@@ -122,7 +112,7 @@ the "variant" and "iteration" columns in the experiment's sqlite database.
 
 # CLI
 
-See [an example](https://github.com/Jacob-Stevens-Haas/gen-experiments).
+See [an example](https://github.com/Jacob-Stevens-Haas/gen-experiments/blob/57877df35a9775db15719e16396fe8b06df5e3fa/run_exps.sh).
 
 ## Untracked parameters
 
@@ -163,31 +153,27 @@ mitosis project_pkg.pdes -g heat2d -p initial_condition=origin-bump2d
 mitosis project_pkg.gridsearch -g pdes-heat -p initial_condition=origin-bump
 ```
 
-# A More Advanced Workflow
+# Some more advanced usage.
 
-As soon as a research project can define a single `run()` function that specifies
-an experiment, the axes/parameters by which trials differ, and the output to
-measure, `mitosis` can be useful.
-I have found the following structure useful:
+It should be noted that mitosis only works on installed packages - modules that you can run using `python -m pkgname`.
 
-    project_dir/
-    |-- .git                As well as all other project files, e.g. tests/
-    |                       pyproject.toml, .pre-commit-config.yaml...
-    |-- project_pkg/
-        |-- __init__.py     The definitions of variant names that are common
-        |                   to multiple experiments and referenced in each
-        |                   experiment's lookup_dict
-        |-- exp1.py         One experiment to run
-        |-- exp2.py         Another experiment to run
-        |-- _common.py      or _utils.py.py, basically anything needed by
-        |                   other expermints such as common plotting functions
-        |-- trials/         The folder passed to mitosis.run() to store results
+ When you want two modules share the same, long lookup_dict, I have found creating a
+module with multiple dictionaries works well, e.g.
 
-Most of this is common across all packages and is basic engineering discipline.
-If project_pkg is installed, it allows mitosis's CLI to be called as:
+    project_pkg/
+        |-- __init__.py     # Should look like
+        |                   param_1 = {"var1": 1, "var2": 2}
+        |                   param_2 = {"foo": "hello", "bar": "world"}
+        |
+        |                   # Each experiment gets same lookup dict
+        |-- exp1.py         lookup_dict = vars(project_pkg)
+        |-- exp2.py         lookup_dict = vars(project_pkg)
+
+This way, the same variants can be used for different experiemnts:
 
 ```
-mitosis project_pkg.exp1 --eval-param seed=2 --param exp_params=var_a
+mitosis project_pkg.exp1 -e seed=2 -p param_1=var_1 -p param_2=foo
+mitosis project_pkg.exp2 -e seed=2 -p param_1=var_1 -p param_2=foo
 ```
 It is also common to have one experiment wrap another, e.g. if exp2 is a gridsearch
 around exp1.
