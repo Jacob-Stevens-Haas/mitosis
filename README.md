@@ -138,6 +138,10 @@ that you will likely go through variant names quickly.  This disambiguation is
 somewhat intentional, but you can free up names by deleting or renaming the
 experiment database or deleting records in the `variant_param_name` table.
 
+Mitosis also sets the log level of the experiment module to INFO and gives it
+a FileHandler to the metadata directory.  In Debug mode, mitosis sets the log
+level of the experiment to DEBUG.
+
 ## Sharing code between experiments: Group
 
 If your experimental code is intended to be used for multiple dissimilar
