@@ -100,6 +100,7 @@ class Parameter:
 
 
 def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
+    trial = _locate_trial_folder(hexstr, trials_folder=trials_folder)
     if trials_folder is None:
         trials_folder = Path().absolute()
     else:
@@ -108,6 +109,25 @@ def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
         with open(trial / "results.dill", "rb") as fh:
             return dill.load(fh)
     raise FileNotFoundError(f"Could not find a trial that matched {hexstr}")
+
+
+def _locate_trial_folder(
+    hexstr: str, *, trials_folder: Optional[Path | str] = None
+) -> Path:
+    if trials_folder is None:
+        trials_folder = Path().absolute()
+    else:
+        trials_folder = Path(trials_folder).resolve()
+    matches = trials_folder.glob(f"*{hexstr}")
+    try:
+        first = next(matches)
+    except StopIteration:
+        raise FileNotFoundError(f"Could not find a trial that matched {hexstr}")
+    try:
+        next(matches)
+    except StopIteration:
+        return first
+    raise RuntimeError(f"Two or more matches found for {hexstr}")
 
 
 def _split_param_str(paramstr: str) -> tuple[bool, str, str]:
@@ -299,7 +319,7 @@ def run(
     output_extension: str = "html",
     untracked_params: Collection[str] = (),
     matplotlib_dpi: int = 72,
-) -> Optional[str]:
+) -> str:
     """Run the selected experiment.
 
     Arguments:
@@ -319,7 +339,7 @@ def run(
             functional.
 
     Returns:
-        The chosen main metric of the experiment
+        The pseudorandom key to this experiment
     """
 
     if debug:
@@ -387,6 +407,7 @@ def run(
         {p.arg_name: p.var_name for p in params if p.evaluate},
         exp_metadata_folder,
         matplotlib_dpi,
+        debug=debug,
     )
 
     utc_now = datetime.now(timezone.utc)
@@ -414,7 +435,7 @@ def run(
     )
     if exc is not None:
         raise exc
-    return metrics
+    return rand_key
 
 
 def _run_in_notebook(
@@ -423,19 +444,29 @@ def _run_in_notebook(
     eval_params: dict[str, str],
     trials_folder,
     matplotlib_dpi=72,
+    debug: bool = False,
 ) -> tuple[nbformat.NotebookNode, Optional[str], Optional[Exception]]:
     ex_module = ex.__name__
     ex_file = ex.__file__
     code = (
         "import importlib\n"
+        "import logging\n"
         "import matplotlib as mpl\n"
         "import dill\n"
         "import sys\n\n"
         f"ex = importlib.import_module('{ex_module}', '{ex_file}')\n\n"
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
+        f"logger = logging.getLogger('{ex_module}')\n"
         'print(f"Running {ex.name}.run()")\n'
     )
+    code += (
+        "logger.setLevel(logging.DEBUG)\n"
+        if debug
+        else "logger.setLevel(logging.INFO)\n"
+    )
+    logfile = trials_folder / f"{ex_module}.log"
+    code += f"logger.addHandler(logging.FileHandler('{logfile}', delay=True))\n"
 
     nb = nbformat.v4.new_notebook()
     setup_cell = nbformat.v4.new_code_cell(source=code)

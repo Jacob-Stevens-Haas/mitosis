@@ -59,6 +59,7 @@ dev = [
   "mypy",
   "pandas-stubs",
   "pre-commit",
+  "pytest-lazy-fixture",
   "sphinx",
   "codecov"
 ]
@@ -90,8 +91,8 @@ extend-exclude = '''
 filterwarnings = [
   "ignore::RuntimeWarning",
   "ignore::UserWarning",]
-addopts = '-m "not slow"'
-markers = ["slow"]
+addopts = '-m "not clean"'
+markers = ["clean"]
 
 [tool.codespell]
 ignore-words-list = "raison"

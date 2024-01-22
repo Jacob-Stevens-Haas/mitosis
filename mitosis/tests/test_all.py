@@ -1,6 +1,7 @@
 import subprocess
 import sys
 from types import ModuleType
+from typing import cast
 
 import nbclient.exceptions
 import pytest
@@ -8,6 +9,9 @@ import pytest
 import mitosis
 from mitosis.tests import bad_return_experiment
 from mitosis.tests import mock_experiment
+
+mock_experiment = cast(mitosis.Experiment, mock_experiment)
+bad_return_experiment = cast(mitosis.Experiment, bad_return_experiment)
 
 
 def test_reproduceable_dict():
@@ -102,21 +106,49 @@ def fake_lookup_param():
     return mitosis.Parameter("test", "foo", 2, evaluate=False)
 
 
-def test_empty_mod_experiment(tmp_path, fake_eval_param, fake_lookup_param):
-    result = mitosis.run(
+@pytest.mark.parametrize(
+    "param",
+    (
+        pytest.lazy_fixture("fake_eval_param"),  # type: ignore
+        pytest.lazy_fixture("fake_lookup_param"),  # type: ignore
+    ),
+)
+def test_empty_mod_experiment(tmp_path, param):
+    mitosis.run(
         mock_experiment,
         debug=True,
         trials_folder=tmp_path,
-        params=[fake_eval_param],
+        params=[param],
     )
-    assert result == "0"
-    result = mitosis.run(
+
+
+def test_empty_mod_logging_debug(tmp_path):
+    hexstr = mitosis.run(
         mock_experiment,
         debug=True,
         trials_folder=tmp_path,
-        params=[fake_lookup_param],
+        params=[],
     )
-    assert result == "0"
+    trial_folder = mitosis._locate_trial_folder(hexstr, trials_folder=tmp_path)
+    with open(trial_folder / f"{mock_experiment.__name__}.log") as f:
+        log_str = "".join(f.readlines())
+    assert "This is run every time" in log_str
+    assert "This is run in debug mode only" in log_str
+
+
+@pytest.mark.clean
+def test_empty_mod_logging(tmp_path):
+    hexstr = mitosis.run(
+        mock_experiment,
+        debug=False,
+        trials_folder=tmp_path,
+        params=[],
+    )
+    trial_folder = mitosis._locate_trial_folder(hexstr, trials_folder=tmp_path)
+    with open(trial_folder / f"{mock_experiment.__name__}.log") as f:
+        log_str = "".join(f.readlines())
+    assert "This is run every time" in log_str
+    assert "This is run in debug mode only" not in log_str
 
 
 def test_malfored_return_experiment(tmp_path):

@@ -1,4 +1,4 @@
-name: Tests
+name: CI
 
 on:
   push:
@@ -76,7 +76,7 @@ jobs:
           pip install .[dev]
     - name: Test with pytest
       run: |
-          coverage run --source=mitosis -m pytest mitosis/tests  && coverage xml
+          coverage run --source=mitosis -m pytest mitosis/tests -m "clean or not clean" && coverage xml
     - uses: actions/cache@v3
       with:
           path: ~/.cache/pip
