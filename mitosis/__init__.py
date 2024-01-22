@@ -101,14 +101,8 @@ class Parameter:
 
 def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
     trial = _locate_trial_folder(hexstr, trials_folder=trials_folder)
-    if trials_folder is None:
-        trials_folder = Path().absolute()
-    else:
-        trials_folder = Path(trials_folder).resolve()
-    for trial in trials_folder.glob(f"*{hexstr}"):
-        with open(trial / "results.dill", "rb") as fh:
-            return dill.load(fh)
-    raise FileNotFoundError(f"Could not find a trial that matched {hexstr}")
+    with open(trial / "results.dill", "rb") as fh:
+        return dill.load(fh)
 
 
 def _locate_trial_folder(
