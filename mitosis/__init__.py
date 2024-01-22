@@ -303,6 +303,8 @@ def _lock_in_variant(
         _verify_variant_name(trial_db, param)
     var_names = [param.var_name for param in params]
     arg_names = [param.arg_name for param in params]
+    if not arg_names:
+        return "noparams"
     return "-".join(
         [x for _, x in sorted(zip(arg_names, var_names), key=lambda pair: pair[0])]
     )
@@ -380,7 +382,7 @@ def run(
         + f"--{commit}"
         + "--"
         + "--"
-        + "--None"
+        + "--"
     )
     utc_now = datetime.now(timezone.utc)
     cpu_now = process_time()
