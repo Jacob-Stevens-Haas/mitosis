@@ -56,6 +56,8 @@ dev = [
   "flake8-comprehensions>=3.1.0",
   "black",
   "coverage",
+  "mypy",
+  "pandas-stubs",
   "pre-commit",
   "sphinx",
   "codecov"

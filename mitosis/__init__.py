@@ -26,11 +26,12 @@ from typing import Optional
 from typing import Protocol
 from typing import Sequence
 
-import dill
+import dill  # type: ignore
 import git
 import nbclient.exceptions
 import nbformat
 import pandas as pd
+import sqlalchemy as sql
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers.files import FilesWriter
@@ -155,6 +156,7 @@ class DBHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord):
         vals = self.parse_record(record.getMessage())
+        stmt: sql.Insert | sql.Update
         if "insert" in vals[0]:
             stmt = insert(self.log_table)
             for i, col in enumerate(self.log_table.columns):
@@ -208,6 +210,7 @@ def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
     eng = create_engine("sqlite:///" + str(trial_db))
     md = MetaData()
     tb = Table(f"variant_{param.arg_name}", md, *variant_types())
+    vals: Collection[Any]
     if isinstance(param.vals, Mapping):
         vals = StrictlyReproduceableDict({k: v for k, v in sorted(param.vals.items())})
     elif isinstance(param.vals, Collection) and not isinstance(param.vals, str):
