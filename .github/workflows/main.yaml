@@ -36,14 +36,13 @@ jobs:
         sudo apt-get update -y
         sudo apt-get install pandoc
         sudo apt-get update -y
-        pip install -e .[doc]
+        pip install -e .[dev]
     - name: Build docs
       run: |
         cd docs
         python -m sphinx -TEWb html -d _build/doctrees . _build/html
 
   Tests:
-    needs: Linting
     runs-on: ubuntu-latest
     strategy:
       max-parallel: 4
@@ -61,12 +60,7 @@ jobs:
           pip install .[dev]
     - name: Test with pytest
       run: |
-          coverage run --source=mitosis -m pytest test  && coverage xml
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.xml
+          coverage run --source=mitosis -m pytest mitosis/tests  && coverage xml
     - uses: actions/cache@v3
       with:
           path: ~/.cache/pip
