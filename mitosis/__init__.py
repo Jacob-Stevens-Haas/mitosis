@@ -8,8 +8,14 @@ from dataclasses import dataclass
 from dataclasses import field
 from datetime import datetime
 from datetime import timezone
-from importlib.metadata import packages_distributions
-from importlib.metadata import version
+
+if sys.version_info >= (3, 9):
+    from importlib.metadata import packages_distributions
+    from importlib.metadata import version
+else:
+    from importlib_metadata import packages_distributions
+    from importlib_metadata import version
+
 from pathlib import Path
 from time import process_time
 from types import BuiltinFunctionType

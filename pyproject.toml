@@ -36,6 +36,7 @@ classifiers = [
 dependencies = [
   "dill",
   "GitPython",
+  "importlib_metadata",
   "ipykernel",
   "matplotlib",
   "nbconvert",
