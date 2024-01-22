@@ -8,14 +8,8 @@ from dataclasses import dataclass
 from dataclasses import field
 from datetime import datetime
 from datetime import timezone
-
-if sys.version_info >= (3, 10):
-    from importlib.metadata import packages_distributions
-    from importlib.metadata import version
-else:
-    from importlib_metadata import packages_distributions
-    from importlib_metadata import version
-
+from importlib.metadata import packages_distributions
+from importlib.metadata import version
 from pathlib import Path
 from time import process_time
 from types import BuiltinFunctionType
@@ -100,6 +94,7 @@ class Parameter:
     var_name: str
     arg_name: str
     vals: Any
+    # > 3.10 only: https://stackoverflow.com/a/49911616/534674
     evaluate: bool = field(default=False, kw_only=True)
 
 

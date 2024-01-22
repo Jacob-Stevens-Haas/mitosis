@@ -17,7 +17,7 @@ jobs:
     - name: "Set up Python"
       uses: actions/setup-python@v3
       with:
-          python-version: "3.9"
+          python-version: "3.10"
     - name: run pre-commit
       run: |
         pip install pre-commit
@@ -48,7 +48,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-          python-version: ["3.9", "3.10"]
+          python-version: ["3.10", "3.11", "3.12"]
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}

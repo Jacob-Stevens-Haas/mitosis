@@ -7,7 +7,7 @@ name = "mitosis"
 dynamic = ["version"]
 description = "Reproduce Machine Learning experiments easily"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 keywords = ["Machine Learning", "Science", "Mathematics", "Experiments"]
 authors = [
