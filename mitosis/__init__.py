@@ -9,7 +9,7 @@ from dataclasses import field
 from datetime import datetime
 from datetime import timezone
 
-if sys.version_info >= (3, 9):
+if sys.version_info >= (3, 10):
     from importlib.metadata import packages_distributions
     from importlib.metadata import version
 else:

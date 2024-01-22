@@ -40,7 +40,7 @@ jobs:
     - name: Build docs
       run: |
         cd docs
-        python -m sphinx -TEWb html -d _build/doctrees . _build/html
+        python -m sphinx -TEWb html source build
 
   Tests:
     runs-on: ubuntu-latest
