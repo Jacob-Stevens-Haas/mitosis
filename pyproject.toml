@@ -14,7 +14,7 @@ authors = [
   {email = "jacob.stevens.haas@gmail.com", name = "Jake Stevens-Haas"}
 ]
 classifiers = [
-  "Development Status :: 1 - Planning",
+  "Development Status :: 4 - Beta",
   "Programming Language :: Python",
   "Framework :: Jupyter",
   "Intended Audience :: Developers",
