@@ -57,34 +57,40 @@ def _create_parser() -> argparse.ArgumentParser:
             "--param solver=solver_1\nKeys must be understood by the experiment"
             " being run.  Values reference variables\nstored by the same name in the"
             " experiment's config dict.\n\n To skip tracking and locking a parameter, "
-            "precede the key with a minus sign ('-')."
+            "precede the key with a plus sign ('+')."
         ),
     )
     return parser
 
 
-def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
-    ex = cast(Experiment, import_module(args.experiment))
+def _normalize_params(
+    ep_strs: list[str], lp_strs: list[str], lookup_dict: dict[str, Any]
+) -> tuple[list[Parameter], list[str]]:
     params = []
 
     untracked_args: list[str] = []
 
-    if args.eval_param is None:
-        args.eval_param = ()
-    for ep in args.eval_param:
-        track, arg_name, var_name = _split_param_str(ep)
-        if not track:
-            untracked_args.append(arg_name)
-        arg_val = eval(var_name)
-        params.append(Parameter(str(arg_val), arg_name, arg_val, evaluate=True))
-
-    if args.param is None:
-        args.param = ()
-    for param in args.param:
+    for param in lp_strs:
         track, arg_name, var_name = _split_param_str(param)
         if not track:
             untracked_args.append(arg_name)
-        params += [_resolve_param(arg_name, var_name, ex.lookup_dict)]
+        params += [_resolve_param(arg_name, var_name, lookup_dict)]
+
+    for ep in ep_strs:
+        track, arg_name, var_name = _split_param_str(ep)
+        if not track:
+            untracked_args.append(arg_name)
+        params.append(Parameter(var_name, arg_name, var_name, evaluate=True))
+
+    return params, untracked_args
+
+
+def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
+    ex = cast(Experiment, import_module(args.experiment))
+
+    params, untracked_args = _normalize_params(
+        args.eval_param, args.param, ex.lookup_dict
+    )
 
     if args.folder is None:
         trials_folder = Path(".").resolve()
