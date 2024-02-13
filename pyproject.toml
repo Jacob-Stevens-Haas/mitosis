@@ -50,7 +50,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pytest >= 6.0.0",
+  "pytest >=6.0.0,<8.0.0",
   "pytest-cov",
   "flake8",
   "flake8-comprehensions>=3.1.0",
