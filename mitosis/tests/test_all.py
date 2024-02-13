@@ -7,6 +7,7 @@ import nbclient.exceptions
 import pytest
 
 import mitosis
+from mitosis.__main__ import _normalize_params
 from mitosis.tests import bad_return_experiment
 from mitosis.tests import mock_experiment
 
@@ -149,6 +150,11 @@ def test_empty_mod_logging(tmp_path):
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
     assert "This is run in debug mode only" not in log_str
+
+
+def test_process_cl_params(tmp_path):
+    processed = _normalize_params(['mystr="hi"', "+myint=2"], [], {})
+    assert all(isinstance(param.vals, str) for param in processed[0])
 
 
 def test_malfored_return_experiment(tmp_path):
