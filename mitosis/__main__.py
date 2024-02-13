@@ -3,6 +3,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 from typing import cast
+from typing import Optional
 
 from . import _resolve_param
 from . import _split_param_str
@@ -64,19 +65,21 @@ def _create_parser() -> argparse.ArgumentParser:
 
 
 def _normalize_params(
-    ep_strs: list[str], lp_strs: list[str], lookup_dict: dict[str, Any]
+    ep_strs: Optional[list[str]],
+    lp_strs: Optional[list[str]],
+    lookup_dict: dict[str, Any],
 ) -> tuple[list[Parameter], list[str]]:
     params = []
 
     untracked_args: list[str] = []
 
-    for param in lp_strs:
+    for param in lp_strs if lp_strs else ():
         track, arg_name, var_name = _split_param_str(param)
         if not track:
             untracked_args.append(arg_name)
         params += [_resolve_param(arg_name, var_name, lookup_dict)]
 
-    for ep in ep_strs:
+    for ep in ep_strs if ep_strs else ():
         track, arg_name, var_name = _split_param_str(ep)
         if not track:
             untracked_args.append(arg_name)
