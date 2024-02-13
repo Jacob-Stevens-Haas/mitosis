@@ -70,6 +70,9 @@ homepage = "https://github.com/Jacob-Stevens-Haas/mitosis"
 [project.scripts]
 mitosis="mitosis.__main__:main"
 
+[tool.setuptools]
+packages = ["mitosis"]
+
 [tool.setuptools_scm]
 
 [tool.black]
