@@ -1,7 +1,6 @@
 import logging
 import pprint
 import sys
-import warnings
 from abc import ABCMeta
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -291,6 +290,7 @@ def _lock_in_variant(
     trial_db: Path,
     debug: bool,
 ) -> str:
+    """Calculate the unique variant name combining all variants of parameters"""
     for param in params:
         if debug or param.arg_name in untracked_params:
             continue
@@ -331,8 +331,9 @@ def run(
         trials_folder (path-like): The folder to store both output and
             logfile.
         output_extension: what output type to produce using nbconvert.
+            Either 'html' or 'ipynb'.
         untracked_params: names of parameters to not track in database
-        matplotlib_resolution: dpi for matplotlib images.  Not yet
+        matplotlib_dpi: dpi for matplotlib images.  Not yet
             functional.
 
     Returns:
@@ -347,57 +348,27 @@ def run(
     trial_db = trials_folder / dbfile
     master_variant = _lock_in_variant(params, untracked_params, trial_db, debug)
 
-    table_name = f"trials_{ex.name}"
+    experiments_table = f"trials_{ex.name}"
     params = list(params)
     if group is not None:
-        table_name += f" {group}"
+        experiments_table += f" {group}"
         params.append(Parameter(f"'{group}'", "group", group, evaluate=True))
-    exp_logger, trials_table = _init_logger(trial_db, table_name, debug)
+    exp_logger, trials_table = _init_logger(trial_db, experiments_table, debug)
     iteration = (
         0 if debug else _id_variant_iteration(trial_db, trials_table, master_variant)
     )
-    new_filename = f"trial_{ex.name}"
-    if group is not None:
-        new_filename += f"_{group}"
     rand_key = "".join(choice(list("0123456789abcde"), 6))
-    new_filename += f"_{master_variant}_{iteration}_{rand_key}"
-    if debug:
-        new_filename += "debug"
-    if output_extension is None:
-        new_filename = None
-    elif output_extension == "html":
-        new_filename += ".html"
-    elif output_extension == "ipynb":
-        new_filename += ".ipynb"
-    exp_logger.info(
-        "trial entry: insert"
-        + f"--{master_variant}"
-        + f"--{iteration}"
-        + f"--{commit}"
-        + "--"
-        + "--"
-        + "--"
-    )
-    utc_now = datetime.now(timezone.utc)
-    cpu_now = process_time()
-    log_msg = (
-        f"Running experiment {ex.name}, simulation variant {master_variant}, "
-        f"iteration {iteration} at time: "
-        + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
-        + f".  Current repo hash: {commit}"
-    )
-    if debug:
-        log_msg += ".  In debugging mode."
-    exp_logger.info(log_msg)
 
-    exp_metadata_name = (
-        datetime.now().astimezone().strftime(r"%Y-%m-%d") + f"_{rand_key}"
+    out_filename = _create_filename(
+        ex.name, group, debug, master_variant, iteration, rand_key, output_extension
     )
-    exp_metadata_folder = trials_folder / exp_metadata_name
-    exp_metadata_folder.mkdir()
+    exp_metadata_folder = _make_metadata_folder(trials_folder, rand_key)
     _write_freezefile(exp_metadata_folder)
 
-    nb, metrics, exc = _run_in_notebook(
+    start_time = _log_start_experiment(
+        ex.name, exp_logger, master_variant, iteration, commit, debug
+    )
+    nb, metric, exc = _run_in_notebook(
         ex,
         {p.arg_name: p.var_name for p in params if not p.evaluate},
         {p.arg_name: p.var_name for p in params if p.evaluate},
@@ -405,30 +376,12 @@ def run(
         matplotlib_dpi,
         debug=debug,
     )
-
-    utc_now = datetime.now(timezone.utc)
-    exp_logger.info(
-        "Finished experiment at time: "
-        + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
-        + f".  Results: {metrics}"
+    _save_notebook(nb, out_filename, trials_folder, output_extension)
+    (exp_metadata_folder / "experiment").symlink_to(trials_folder / out_filename)
+    _log_finish_experiment(
+        exp_logger, master_variant, iteration, commit, metric, out_filename, start_time
     )
-    cpu_time = process_time() - cpu_now
 
-    if new_filename is not None:
-        _save_notebook(nb, new_filename, trials_folder, output_extension)
-        (exp_metadata_folder / "experiment").symlink_to(trials_folder / new_filename)
-    else:
-        warnings.warn("Logging trial and mock filename, but no file created")
-
-    exp_logger.info(
-        "trial entry: update"
-        + f"--{master_variant}"
-        + f"--{iteration}"
-        + f"--{commit}"
-        + f"--{cpu_time}"
-        + f"--{metrics}"
-        + f"--{new_filename}"
-    )
     if exc is not None:
         raise exc
     return rand_key
@@ -599,6 +552,84 @@ class StrictlyReproduceableList(List):
         else:
             string = string[:-2] + "]"
         return string
+
+
+def _make_metadata_folder(trials_folder: Path, rand_key: str) -> Path:
+    metadata_key = datetime.now().astimezone().strftime(r"%Y-%m-%d") + f"_{rand_key}"
+    metadata_folder = trials_folder / metadata_key
+    metadata_folder.mkdir()
+    return metadata_folder
+
+
+def _create_filename(
+    ex_name: str,
+    group: Optional[str],
+    debug: bool,
+    variant: str,
+    iteration: int,
+    suffix: Optional[str],
+    extension: str,
+) -> str:
+    new_filename = f"trial_{ex_name}"
+    if group is not None:
+        new_filename += f"_{group}"
+    new_filename += f"_{variant}_{iteration}_{suffix}"
+    if debug:
+        new_filename += "debug"
+    elif extension == "html":
+        new_filename += ".html"
+    elif extension == "ipynb":
+        new_filename += ".ipynb"
+    return new_filename
+
+
+def _log_start_experiment(
+    name: str,
+    exp_logger: logging.Logger,
+    variant: str,
+    iteration: int,
+    commit: str,
+    debug: bool,
+) -> float:
+    exp_logger.info(f"trial entry: insert--{variant}----{iteration}--{commit}------")
+    utc_now = datetime.now(timezone.utc)
+    cpu_now = process_time()
+    log_msg = (
+        f"Running experiment {name}, simulation variant {variant}, "
+        f"iteration {iteration} at time: "
+        + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
+        + f".  Current repo hash: {commit}"
+    )
+    if debug:
+        log_msg += ".  In debugging mode."
+    exp_logger.info(log_msg)
+    return cpu_now
+
+
+def _log_finish_experiment(
+    exp_logger: logging.Logger,
+    variant: str,
+    iteration: int,
+    commit: str,
+    metric: Optional[str],
+    filename: str,
+    start_time: float,
+) -> None:
+    utc_now = datetime.now(timezone.utc)
+    exp_logger.info(
+        "Finished experiment at time: "
+        + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
+        + f".  Results: {metric}"
+    )
+    exp_logger.info(
+        "trial entry: update"
+        + f"--{variant}"
+        + f"--{iteration}"
+        + f"--{commit}"
+        + f"--{process_time() - start_time}"
+        + f"--{metric}"
+        + f"--{filename}"
+    )
 
 
 def _write_freezefile(folder: Path):
