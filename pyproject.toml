@@ -98,3 +98,7 @@ markers = ["clean"]
 
 [tool.codespell]
 ignore-words-list = "raison"
+
+[tool.mitosis.steps]
+data = ["foo", "bar"]
+fit_eval = ["baz"]

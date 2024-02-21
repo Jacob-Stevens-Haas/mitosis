@@ -27,7 +27,6 @@ from typing import Protocol
 from typing import Sequence
 
 import dill  # type: ignore
-import git
 import nbclient.exceptions
 import nbformat
 import pandas as pd
@@ -46,6 +45,8 @@ from sqlalchemy import select
 from sqlalchemy import String
 from sqlalchemy import Table
 from sqlalchemy import update
+
+from . import _disk
 
 
 class _ExpRun(Protocol):  # Can't handle Varargs
@@ -271,18 +272,6 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
         return df["iteration"].max() + 1
 
 
-def _get_commit_and_project_root(debug: bool) -> tuple[str, Path]:
-    repo = git.Repo(Path.cwd(), search_parent_directories=True)
-    commit = "0000000" if debug else repo.head.commit.hexsha
-    if repo.is_dirty():
-        raise RuntimeError(
-            "Git Repo is dirty.  For repeatable tests,"
-            " clean the repo by committing or stashing all changes and "
-            "untracked files."
-        )
-    return commit, Path(repo.working_dir)
-
-
 def _lock_in_variant(
     params: Sequence[Parameter],
     untracked_params: Collection[str],
@@ -305,13 +294,12 @@ def _lock_in_variant(
 
 
 def run(
-    ex: Experiment,
+    exps: list[Experiment],
     debug: bool = False,
     *,
     group: str | None = None,
-    dbfile: Path | str = "trials.db",
     params: Sequence[Parameter] = (),
-    trials_folder: Optional[Path | str] = None,
+    trials_folder: Path,
     output_extension: str = "html",
     untracked_params: Collection[str] = (),
     matplotlib_dpi: int = 72,
@@ -319,16 +307,14 @@ def run(
     """Run the selected experiment.
 
     Arguments:
-        ex: The experiment class to run
+        ex: The experiment steps to run
         debug (bool): Whether to run in debugging mode or not.
         group (str): Trial grouping.  Name a group if desiring to
             segregate trials using the same experiment code.  ex.run()
             must take a "group" argument.
-        dbfile (str): the database file for trial results
         params: The assigned parameter dictionaries to generate and
             solve the problem.
-        trials_folder (path-like): The folder to store both output and
-            logfile.
+        trials_folder: The folder to store output, database, log, and metadata.
         output_extension: what output type to produce using nbconvert.
             Either 'html' or 'ipynb'.
         untracked_params: names of parameters to not track in database
@@ -339,15 +325,26 @@ def run(
         The pseudorandom key to this experiment
     """
 
-    commit, repo_dir = _get_commit_and_project_root(debug)
+    repo = _disk.get_repo()
+    if debug:
+        commit = "0000000"
+    else:
+        if repo.is_dirty():
+            raise RuntimeError(
+                "Git Repo is dirty.  For repeatable tests,"
+                " clean the repo by committing or stashing all changes and "
+                "untracked files."
+            )
+        commit = repo.head.commit.hexsha
 
-    if trials_folder is None:
-        trials_folder = repo_dir / "trials"
     trials_folder = Path(trials_folder).absolute()
+    if not trials_folder.exists():
+        trials_folder.mkdir(parents=True)
+    dbfile = "_".join(ex.__name__ for ex in exps) + ".db"
     trial_db = trials_folder / dbfile
     master_variant = _lock_in_variant(params, untracked_params, trial_db, debug)
-
-    experiments_table = f"trials_{ex.name}"
+    exps = exps[0]
+    experiments_table = f"trials_{exps.name}"
     params = list(params)
     if group is not None:
         experiments_table += f" {group}"
@@ -359,16 +356,16 @@ def run(
     rand_key = "".join(choices(list("0123456789abcde"), k=6))
 
     out_filename = _create_filename(
-        ex.name, group, debug, master_variant, iteration, rand_key, output_extension
+        exps.name, group, debug, master_variant, iteration, rand_key, output_extension
     )
     exp_metadata_folder = _make_metadata_folder(trials_folder, rand_key)
     _write_freezefile(exp_metadata_folder)
 
     start_time = _log_start_experiment(
-        ex.name, exp_logger, master_variant, iteration, commit, debug
+        exps.name, exp_logger, master_variant, iteration, commit, debug
     )
     nb, metric, exc = _run_in_notebook(
-        ex,
+        exps,
         {p.arg_name: p.var_name for p in params if not p.evaluate},
         {p.arg_name: p.var_name for p in params if p.evaluate},
         exp_metadata_folder,

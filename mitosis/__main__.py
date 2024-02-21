@@ -4,12 +4,33 @@ from pathlib import Path
 from typing import Any
 from typing import cast
 from typing import Optional
+from typing import TypedDict
 
+from . import _disk
 from . import _resolve_param
 from . import _split_param_str
 from . import Experiment
 from . import Parameter
 from . import run
+
+
+class StepDef(TypedDict):
+    name: str
+    module: str
+    lookup: str
+    group: str
+    eval_params: list[str]
+    lookup_params: list[str]
+
+
+class ExpStep(TypedDict):
+    name: str
+    module: Experiment
+    lookup: dict[str, Any]
+    group: str
+    eval_args: list[Parameter]
+    lookup_args: list[Parameter]
+    untracked_args: list[str]
 
 
 def _create_parser() -> argparse.ArgumentParser:
@@ -41,6 +62,7 @@ def _create_parser() -> argparse.ArgumentParser:
         "--group",
         "-g",
         type=str,
+        nargs="?",
         default=None,
         help="Group of experiment.  This tells mitosis to store all results for a group"
         " separately.",
@@ -100,7 +122,7 @@ def _normalize_params(
 
 def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     if args.experiment:
-        ex = args.experiment[0]
+        exps = cast(list[str], args.experiment)
         if len(args.experiment) > 1:
             raise RuntimeError(
                 "Multi-step experiments not supported yet, check back tomorrow"
@@ -108,32 +130,46 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
         if args.module:
             raise RuntimeError("Cannot use -m option if also passing experiment steps.")
     elif args.module:
-        ex = args.module
+        exps = [cast(str, args.module)]
     else:
         raise RuntimeError(
             "Must set either pass a list of experiment steps "
             "(defined in pyproject.toml) or use the -m flag to pass a single"
             "installed experiment module"
         )
-    ex = cast(Experiment, import_module(ex))
-
-    params, untracked_args = _normalize_params(
-        args.eval_param, args.param, ex.lookup_dict
+    repo = _disk.get_repo()
+    pyproj = Path(repo.working_dir) / "pyproject.toml"
+    all_steps = _disk.parse_steps(_disk.load_mitosis_steps(pyproj))
+    exp_steps: list[StepDef] = []
+    for ex in exps:
+        exp_steps.append(
+            {
+                "name": ex,
+                "module": all_steps[ex][0],
+                "lookup": all_steps[ex][1],
+                "group": assign_group(ex, args.group),
+                "eval_params": assign_params(ex, args.eval_param),
+                "lookup_params": assign_params(ex, args.eval_param),
+            }
+        )
+    # begin clusterfuck
+    for ex in exps:
+        ex_mod = cast(Experiment, import_module(ex))
+    params, untracked_args = _normalize_params(  # here
+        args.eval_param, args.param, ex_mod.lookup_dict
     )
 
     if args.folder is None:
-        trials_folder = Path(".").resolve()
+        folder = Path(repo.working_dir) / "trials"
     else:
-        trials_folder = Path(str(ex.__file__)).parent / args.folder
-    if not trials_folder.exists():
-        trials_folder.mkdir(parents=True)
+        folder = Path(args.folder)
     return {
-        "ex": ex,
+        "ex": exps,  # and ehre
         "debug": args.debug,
-        "group": args.group,
-        "logfile": f"trials_{args.experiment}.db",
+        "group": args.group,  # also here
+        "dbfile": args.experiment,  # here
         "params": params,
-        "trials_folder": trials_folder,
+        "trials_folder": folder,
         "untracked_params": untracked_args,
     }
 
