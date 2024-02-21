@@ -10,6 +10,7 @@ from datetime import timezone
 from importlib.metadata import packages_distributions
 from importlib.metadata import version
 from pathlib import Path
+from random import choices
 from time import process_time
 from types import BuiltinFunctionType
 from types import BuiltinMethodType
@@ -34,7 +35,6 @@ import sqlalchemy as sql
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers.files import FilesWriter
-from numpy.random import choice
 from sqlalchemy import Column
 from sqlalchemy import create_engine
 from sqlalchemy import Float
@@ -356,7 +356,7 @@ def run(
     iteration = (
         0 if debug else _id_variant_iteration(trial_db, trials_table, master_variant)
     )
-    rand_key = "".join(choice(list("0123456789abcde"), 6))
+    rand_key = "".join(choices(list("0123456789abcde"), k=6))
 
     out_filename = _create_filename(
         ex.name, group, debug, master_variant, iteration, rand_key, output_extension
@@ -459,7 +459,7 @@ def _run_in_notebook(
 def _create_kernel():
     from ipykernel import kernelapp as app
 
-    kernel_name = "".join(choice(list("0123456789"), 6)) + str(
+    kernel_name = "".join(choices(list("0123456789"), k=6)) + str(
         hash(Path(sys.executable))
     )
     app.launch_new_instance(argv=["install", "--user", "--name", kernel_name])

@@ -42,10 +42,9 @@ dependencies = [
   "nbconvert",
   "nbclient",
   "nbformat",
-  "numpy",
   "pandas",
-  "papermill",
   "sqlalchemy",
+  "toml"
 ]
 
 [project.optional-dependencies]
