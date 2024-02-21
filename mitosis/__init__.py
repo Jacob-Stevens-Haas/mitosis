@@ -273,15 +273,16 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
         return df["iteration"].max() + 1
 
 
-def _identify_cwd_commit_hash() -> str:
+def _get_commit_and_project_root(debug: bool) -> tuple[str, Path]:
     repo = git.Repo(Path.cwd(), search_parent_directories=True)
+    commit = "0000000" if debug else repo.head.commit.hexsha
     if repo.is_dirty():
         raise RuntimeError(
             "Git Repo is dirty.  For repeatable tests,"
             " clean the repo by committing or stashing all changes and "
             "untracked files."
         )
-    return repo.head.commit.hexsha
+    return commit, Path(repo.working_dir)
 
 
 def _lock_in_variant(
@@ -309,9 +310,9 @@ def run(
     debug: bool = False,
     *,
     group: str | None = None,
-    logfile: Path | str = "trials.db",
+    dbfile: Path | str = "trials.db",
     params: Sequence[Parameter] = (),
-    trials_folder: Path | str = Path(__file__).absolute().parent / "trials",
+    trials_folder: Optional[Path | str] = None,
     output_extension: str = "html",
     untracked_params: Collection[str] = (),
     matplotlib_dpi: int = 72,
@@ -324,7 +325,7 @@ def run(
         group (str): Trial grouping.  Name a group if desiring to
             segregate trials using the same experiment code.  ex.run()
             must take a "group" argument.
-        logfile (str): the database log for trial results
+        dbfile (str): the database file for trial results
         params: The assigned parameter dictionaries to generate and
             solve the problem.
         trials_folder (path-like): The folder to store both output and
@@ -338,13 +339,12 @@ def run(
         The pseudorandom key to this experiment
     """
 
-    if debug:
-        commit = "0000000"
-    else:
-        commit = _identify_cwd_commit_hash()
+    commit, repo_dir = _get_commit_and_project_root(debug)
 
+    if trials_folder is None:
+        trials_folder = repo_dir / "trials"
     trials_folder = Path(trials_folder).absolute()
-    trial_db = trials_folder / logfile
+    trial_db = trials_folder / dbfile
     master_variant = _lock_in_variant(params, untracked_params, trial_db, debug)
 
     table_name = f"trials_{ex.name}"
