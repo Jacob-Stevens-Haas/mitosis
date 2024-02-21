@@ -48,7 +48,7 @@ from sqlalchemy import Table
 from sqlalchemy import update
 
 
-class _ExpRun(Protocol):
+class _ExpRun(Protocol):  # Can't handle Varargs
     def __call__(self, *args: Any) -> dict:
         ...
 
@@ -390,7 +390,7 @@ def _run_in_notebook(
     ex: Experiment,
     lookup_params: dict[str, str],
     eval_params: dict[str, str],
-    trials_folder,
+    trials_folder: Path,
     matplotlib_dpi=72,
     debug: bool = False,
 ) -> tuple[nbformat.NotebookNode, Optional[str], Optional[Exception]]:

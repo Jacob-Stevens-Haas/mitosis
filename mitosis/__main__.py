@@ -17,7 +17,17 @@ def _create_parser() -> argparse.ArgumentParser:
         prog="mitosis",
         description=("Orchestrate experiment to ensure reproducibility."),
     )
-    parser.add_argument("experiment", help="Name to identify the experiment")
+    parser.add_argument(
+        "experiment",
+        nargs="*",
+        help="Name to identify the experiment step(s), specified in pyproject.toml",
+    )
+    parser.add_argument(
+        "-m",
+        "--module",
+        nargs="?",
+        help="Load complete experiment from a module",
+    )
     parser.add_argument(
         "--debug",
         "-d",
@@ -89,7 +99,23 @@ def _normalize_params(
 
 
 def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
-    ex = cast(Experiment, import_module(args.experiment))
+    if args.experiment:
+        ex = args.experiment[0]
+        if len(args.experiment) > 1:
+            raise RuntimeError(
+                "Multi-step experiments not supported yet, check back tomorrow"
+            )
+        if args.module:
+            raise RuntimeError("Cannot use -m option if also passing experiment steps.")
+    elif args.module:
+        ex = args.module
+    else:
+        raise RuntimeError(
+            "Must set either pass a list of experiment steps "
+            "(defined in pyproject.toml) or use the -m flag to pass a single"
+            "installed experiment module"
+        )
+    ex = cast(Experiment, import_module(ex))
 
     params, untracked_args = _normalize_params(
         args.eval_param, args.param, ex.lookup_dict
