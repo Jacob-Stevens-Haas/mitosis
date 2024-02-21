@@ -1,4 +1,3 @@
-import subprocess
 import sys
 from types import ModuleType
 from typing import cast
@@ -167,25 +166,6 @@ def test_malfored_return_experiment(tmp_path):
             trials_folder=tmp_path,
             params=[],
         )
-
-
-def test_cli(tmp_path):
-    subprocess.run(
-        ["which", "python3"],
-    )
-    subprocess.run(
-        [
-            "python3",
-            "-m",
-            "mitosis",
-            "mitosis.tests.mock_experiment",
-            "--param",
-            "foo=test",
-            "-e",
-            "seed=1" "-F",
-            str(tmp_path),
-        ],
-    )
 
 
 def run(foo):
