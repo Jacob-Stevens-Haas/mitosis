@@ -34,7 +34,6 @@ import sqlalchemy as sql
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers.files import FilesWriter
-from numpy import array  # noqa: F401 used in an eval() for result string
 from numpy.random import choice
 from sqlalchemy import Column
 from sqlalchemy import create_engine
