@@ -496,10 +496,14 @@ def _run_in_notebook(
     ep = ExecutePreprocessor(timeout=-1, kernel=kernel_name)
     exception = None
     metrics = None
+    if debug:
+        allowed = ()
+    else:
+        allowed = (nbclient.exceptions.CellExecutionError,)
     try:
         ep.preprocess(nb, {"metadata": {"path": trials_folder}})
         metrics = nb["cells"][-1]["outputs"][0]["text"][:-1]
-    except nbclient.exceptions.CellExecutionError as exc:
+    except allowed as exc:
         exception = exc
     return nb, metrics, exception
 
