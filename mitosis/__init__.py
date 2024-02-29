@@ -18,6 +18,7 @@ from types import FunctionType
 from types import MethodType
 from types import ModuleType
 from typing import Any
+from typing import cast
 from typing import Collection
 from typing import Hashable
 from typing import List
@@ -28,10 +29,10 @@ from typing import Sequence
 
 import dill  # type: ignore
 import git
-import nbclient.exceptions
 import nbformat
 import pandas as pd
 import sqlalchemy as sql
+from nbclient.exceptions import CellExecutionError
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers.files import FilesWriter
@@ -497,9 +498,9 @@ def _run_in_notebook(
     exception = None
     metrics = None
     if debug:
-        allowed = ()
+        allowed = cast(tuple[type[Exception], ...], ())
     else:
-        allowed = (nbclient.exceptions.CellExecutionError,)
+        allowed = (CellExecutionError,)
     try:
         ep.preprocess(nb, {"metadata": {"path": trials_folder}})
         metrics = nb["cells"][-1]["outputs"][0]["text"][:-1]
