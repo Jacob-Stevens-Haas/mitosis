@@ -493,8 +493,7 @@ def _run_in_notebook(
     metrics_cell = nbformat.v4.new_code_cell(source="print(results['main'])")
     nb["cells"] = [setup_cell, resolve_cell, run_cell, result_cell, metrics_cell]
 
-    kernel_name = _create_kernel()
-    ep = ExecutePreprocessor(timeout=-1, kernel=kernel_name)
+    ep = ExecutePreprocessor(timeout=-1)
     exception = None
     metrics = None
     if debug:
@@ -507,16 +506,6 @@ def _run_in_notebook(
     except allowed as exc:
         exception = exc
     return nb, metrics, exception
-
-
-def _create_kernel():
-    from ipykernel import kernelapp as app
-
-    kernel_name = "".join(choice(list("0123456789"), 6)) + str(
-        hash(Path(sys.executable))
-    )
-    app.launch_new_instance(argv=["install", "--user", "--name", kernel_name])
-    return kernel_name
 
 
 def _save_notebook(nb, filename, trials_folder, extension):

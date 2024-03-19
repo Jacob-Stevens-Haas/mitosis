@@ -93,10 +93,6 @@ def test_unreproduceable_dict():
         str(mitosis.StrictlyReproduceableDict(**{"1": lambda x: 1}))
 
 
-def test_kernel_name():
-    mitosis._create_kernel()
-
-
 @pytest.fixture
 def fake_eval_param():
     return mitosis.Parameter("1", "seed", 1, evaluate=True)
