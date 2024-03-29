@@ -1,0 +1,3 @@
+[tool.mitosis.steps]
+data = ["data.library:gen_data", "paper.config:data_config"]
+fit_eval = ["meth_lib:fit_and_score", "paper.config:meth_config"]

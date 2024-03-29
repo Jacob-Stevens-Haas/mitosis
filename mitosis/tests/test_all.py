@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 from types import ModuleType
 from typing import cast
 
@@ -6,6 +7,8 @@ import nbclient.exceptions
 import pytest
 
 import mitosis
+from mitosis import _disk
+from mitosis import parse_steps
 from mitosis.__main__ import _normalize_params
 from mitosis.tests import bad_return_experiment
 from mitosis.tests import mock_experiment
@@ -166,6 +169,29 @@ def test_malfored_return_experiment(tmp_path):
             trials_folder=tmp_path,
             params=[],
         )
+
+
+def test_load_toml():
+    parent = Path(__file__).resolve().parent
+    tomlfile = parent / "test_pyproject.toml"
+    result = _disk.load_mitosis_steps(tomlfile)
+    expected = {
+        "data": ["data.library:gen_data", "paper.config:data_config"],
+        "fit_eval": ["meth_lib:fit_and_score", "paper.config:meth_config"],
+    }
+    assert result == expected
+
+
+def test_parse_steps():
+    from importlib.metadata import version
+    import builtins
+
+    steps = {
+        "want": (("importlib.metadata:version"), ("builtins:__dict__")),
+        "dont_want": (("foo:bar"), ("baz.qux")),
+    }
+    result = parse_steps(["want"], steps)
+    assert result == {"want": (version, vars(builtins))}
 
 
 def run(foo):

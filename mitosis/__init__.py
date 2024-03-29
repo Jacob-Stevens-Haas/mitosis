@@ -1,12 +1,12 @@
 import logging
 import pprint
 import sys
-from abc import ABCMeta
 from collections import OrderedDict
 from dataclasses import dataclass
 from dataclasses import field
 from datetime import datetime
 from datetime import timezone
+from importlib import import_module
 from importlib.metadata import packages_distributions
 from importlib.metadata import version
 from pathlib import Path
@@ -16,14 +16,13 @@ from types import BuiltinFunctionType
 from types import BuiltinMethodType
 from types import FunctionType
 from types import MethodType
-from types import ModuleType
 from typing import Any
+from typing import cast
 from typing import Collection
 from typing import Hashable
 from typing import List
 from typing import Mapping
 from typing import Optional
-from typing import Protocol
 from typing import Sequence
 
 import dill  # type: ignore
@@ -47,19 +46,8 @@ from sqlalchemy import Table
 from sqlalchemy import update
 
 from . import _disk
-
-
-class _ExpRun(Protocol):  # Can't handle Varargs
-    def __call__(self, *args: Any) -> dict:
-        ...
-
-
-class Experiment(ModuleType, metaclass=ABCMeta):
-    __name__: str
-    __file__: str
-    name: str
-    lookup_dict: dict[str, dict[str, Any]]
-    run: _ExpRun
+from ._typing import Experiment
+from ._typing import ExpRun
 
 
 def trials_columns():
@@ -640,3 +628,19 @@ def _prettyprint_config(folder: Path, params: Collection[Parameter]):
     pretty = pprint.pformat(params)
     with open(folder / "config.txt", "w") as f:
         f.write(pretty)
+
+
+def parse_steps(
+    keys: list[str], steps: dict[str, list[str]]
+) -> dict[str, tuple[ExpRun, dict[str, Any]]]:
+    """load named steps (in entry point format)"""
+
+    def unpack(obj_ref: str) -> Any:
+        modname, _, qualname = obj_ref.partition(":")
+        obj = import_module(modname)
+        for attr in qualname.split("."):
+            obj = getattr(obj, attr)
+        return obj
+
+    result = {key: (unpack(steps[key][0]), unpack(steps[key][1])) for key in keys}
+    return cast(dict[str, tuple[ExpRun, dict[str, Any]]], result)

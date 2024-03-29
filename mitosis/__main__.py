@@ -11,6 +11,7 @@ from . import _resolve_param
 from . import _split_param_str
 from . import Experiment
 from . import Parameter
+from . import parse_steps
 from . import run
 
 
@@ -129,6 +130,7 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
             )
         if args.module:
             raise RuntimeError("Cannot use -m option if also passing experiment steps.")
+        all_steps = parse_steps(exps, _disk.load_mitosis_steps())
     elif args.module:
         exps = [cast(str, args.module)]
     else:
@@ -137,9 +139,6 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
             "(defined in pyproject.toml) or use the -m flag to pass a single"
             "installed experiment module"
         )
-    repo = _disk.get_repo()
-    pyproj = Path(repo.working_dir) / "pyproject.toml"
-    all_steps = _disk.parse_steps(_disk.load_mitosis_steps(pyproj))
     exp_steps: list[StepDef] = []
     for ex in exps:
         exp_steps.append(
@@ -147,9 +146,9 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
                 "name": ex,
                 "module": all_steps[ex][0],
                 "lookup": all_steps[ex][1],
-                "group": assign_group(ex, args.group),
-                "eval_params": assign_params(ex, args.eval_param),
-                "lookup_params": assign_params(ex, args.eval_param),
+                "group": None,  # assign_group(ex, args.group),
+                "eval_params": None,  # assign_params(ex, args.eval_param),
+                "lookup_params": None,  # assign_params(ex, args.eval_param),
             }
         )
     # begin clusterfuck
@@ -160,7 +159,7 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     if args.folder is None:
-        folder = Path(repo.working_dir) / "trials"
+        folder = Path(_disk.get_repo().working_dir) / "trials"
     else:
         folder = Path(args.folder)
     return {
