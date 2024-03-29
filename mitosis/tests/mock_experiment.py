@@ -7,5 +7,13 @@ def run(**kwargs):
     return {"main": 0}
 
 
-name = "MockModuleExperiment"
 lookup_dict = {"foo": {"test": 2}}
+
+
+class MockExp:
+    class MockExpInner:
+        lookup_dict: dict[str, dict[str, int]] = lookup_dict
+
+        @staticmethod
+        def run():
+            return {"main": 0}

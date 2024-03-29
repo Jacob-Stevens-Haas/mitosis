@@ -10,6 +10,7 @@ import mitosis
 from mitosis import _disk
 from mitosis import parse_steps
 from mitosis.__main__ import _normalize_params
+from mitosis.__main__ import normalize_modinput
 from mitosis.tests import bad_return_experiment
 from mitosis.tests import mock_experiment
 
@@ -194,8 +195,28 @@ def test_parse_steps():
     assert result == {"want": (version, vars(builtins))}
 
 
-def run(foo):
-    return {"main": 0}
+def test_normalize_modinput():
+    modinput = "mitosis.tests.mock_experiment"
+    result = normalize_modinput(modinput)
+    assert result == {
+        "mitosis.tests.mock_experiment": [
+            "mitosis.tests.mock_experiment:run",
+            "mitosis.tests.mock_experiment:lookup_dict",
+        ]
+    }
+    # if modinput is an object, connect to run and lookup_dict with . not :
+    modinput = "mitosis.tests.mock_experiment:MockExp.MockExpInner"
+    result = normalize_modinput(modinput)
+    assert result == {
+        "mitosis.tests.mock_experiment:MockExp.MockExpInner": [
+            "mitosis.tests.mock_experiment:MockExp.MockExpInner.run",
+            "mitosis.tests.mock_experiment:MockExp.MockExpInner.lookup_dict",
+        ]
+    }
 
 
-name = "MockModuleExperiment"
+# def run(foo):
+#     return {"main": 0}
+
+
+# name = "MockModuleExperiment"

@@ -123,7 +123,7 @@ def _normalize_params(
 
 def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     if args.experiment:
-        exps = cast(list[str], args.experiment)
+        exps: list[str] = args.experiment
         if len(args.experiment) > 1:
             raise RuntimeError(
                 "Multi-step experiments not supported yet, check back tomorrow"
@@ -132,7 +132,7 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
             raise RuntimeError("Cannot use -m option if also passing experiment steps.")
         all_steps = parse_steps(exps, _disk.load_mitosis_steps())
     elif args.module:
-        exps = [cast(str, args.module)]
+        all_steps = parse_steps([args.module], normalize_modinput(args.module))
     else:
         raise RuntimeError(
             "Must set either pass a list of experiment steps "
@@ -182,3 +182,12 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def normalize_modinput(obj_ref: str) -> dict[str, list[str]]:
+    modname, _, qualname = obj_ref.partition(":")
+    if qualname:
+        sep = ":" + qualname + "."
+    else:
+        sep = ":"
+    return {obj_ref: [modname + sep + "run", modname + sep + "lookup_dict"]}
