@@ -1,13 +1,13 @@
 import argparse
+from collections.abc import Sequence
 from importlib import import_module
 from pathlib import Path
 from typing import Any
 from typing import cast
-from typing import Optional
 from typing import TypedDict
 
 from . import _disk
-from . import _resolve_param
+from . import _lookup_param
 from . import _split_param_str
 from . import Experiment
 from . import Parameter
@@ -98,21 +98,21 @@ def _create_parser() -> argparse.ArgumentParser:
 
 
 def _normalize_params(
-    ep_strs: Optional[list[str]],
-    lp_strs: Optional[list[str]],
     lookup_dict: dict[str, Any],
+    ep_strs: Sequence[str] = (),
+    lp_strs: Sequence[str] = (),
 ) -> tuple[list[Parameter], list[str]]:
     params = []
 
     untracked_args: list[str] = []
 
-    for param in lp_strs if lp_strs else ():
+    for param in lp_strs:
         track, arg_name, var_name = _split_param_str(param)
         if not track:
             untracked_args.append(arg_name)
-        params += [_resolve_param(arg_name, var_name, lookup_dict)]
+        params += [_lookup_param(arg_name, var_name, lookup_dict)]
 
-    for ep in ep_strs if ep_strs else ():
+    for ep in ep_strs:
         track, arg_name, var_name = _split_param_str(ep)
         if not track:
             untracked_args.append(arg_name)
@@ -139,7 +139,9 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
             "(defined in pyproject.toml) or use the -m flag to pass a single"
             "installed experiment module"
         )
+
     exp_steps: list[StepDef] = []
+
     for ex in exps:
         exp_steps.append(
             {
@@ -155,7 +157,7 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     for ex in exps:
         ex_mod = cast(Experiment, import_module(ex))
     params, untracked_args = _normalize_params(  # here
-        args.eval_param, args.param, ex_mod.lookup_dict
+        ex_mod.lookup_dict, args.eval_param, args.param
     )
 
     if args.folder is None:

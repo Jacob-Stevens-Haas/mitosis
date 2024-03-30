@@ -156,10 +156,10 @@ def test_empty_mod_logging(tmp_path):
 
 
 def test_process_cl_params(tmp_path):
-    processed = _normalize_params(['mystr="hi"', "+myint=2"], [], {})
+    processed = _normalize_params({}, ['mystr="hi"', "+myint=2"], [])
     assert all(isinstance(param.vals, str) for param in processed[0])
     # Should handle without errors
-    _normalize_params(None, None, {})
+    _normalize_params({}, (), ())
 
 
 def test_malfored_return_experiment(tmp_path):

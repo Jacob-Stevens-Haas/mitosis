@@ -120,7 +120,7 @@ def _split_param_str(paramstr: str) -> tuple[bool, str, str]:
     return track, arg_name, var_name
 
 
-def _resolve_param(
+def _lookup_param(
     arg_name: str, var_name: str, lookup_dict: dict[str, Any]
 ) -> Parameter:
     stored = lookup_dict[arg_name][var_name]
