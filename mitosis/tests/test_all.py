@@ -10,6 +10,7 @@ import mitosis
 from mitosis import _disk
 from mitosis import parse_steps
 from mitosis.__main__ import _normalize_params
+from mitosis.__main__ import _split_param_str
 from mitosis.__main__ import normalize_modinput
 from mitosis.tests import bad_return_experiment
 from mitosis.tests import mock_experiment
@@ -153,6 +154,13 @@ def test_empty_mod_logging(tmp_path):
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
     assert "This is run in debug mode only" not in log_str
+
+
+def test_split_param_str():
+    result = _split_param_str("+a=b")
+    assert result == (False, "", "a", "b")
+    result = _split_param_str("a.b=c")
+    assert result == (True, "a", "b", "c")
 
 
 def test_process_cl_params(tmp_path):

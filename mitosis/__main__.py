@@ -123,14 +123,13 @@ def _normalize_params(
 
 def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     if args.experiment:
-        exps: list[str] = args.experiment
         if len(args.experiment) > 1:
             raise RuntimeError(
                 "Multi-step experiments not supported yet, check back tomorrow"
             )
         if args.module:
             raise RuntimeError("Cannot use -m option if also passing experiment steps.")
-        all_steps = parse_steps(exps, _disk.load_mitosis_steps())
+        all_steps = parse_steps(args.experiment, _disk.load_mitosis_steps())
     elif args.module:
         all_steps = parse_steps([args.module], normalize_modinput(args.module))
     else:
@@ -141,6 +140,8 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     exp_steps: list[StepDef] = []
+    ep_groups = [_split_param_str(epstr) for epstr in args.eval_param]
+    lp_groups = [_split_param_str(lpstr) for lpstr in args.param]
 
     for ex in exps:
         exp_steps.append(
