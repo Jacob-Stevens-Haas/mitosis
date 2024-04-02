@@ -1,34 +1,26 @@
 import argparse
 from collections.abc import Sequence
 from importlib import import_module
+from itertools import groupby
 from pathlib import Path
 from typing import Any
 from typing import cast
-from typing import TypedDict
+from typing import NamedTuple
 
 from . import _disk
 from . import _lookup_param
-from . import _split_param_str
 from . import Experiment
+from . import ExpRun
 from . import Parameter
 from . import parse_steps
 from . import run
 
 
-class StepDef(TypedDict):
+class ExpStep(NamedTuple):
     name: str
-    module: str
-    lookup: str
-    group: str
-    eval_params: list[str]
-    lookup_params: list[str]
-
-
-class ExpStep(TypedDict):
-    name: str
-    module: Experiment
+    module: ExpRun
     lookup: dict[str, Any]
-    group: str
+    group: str | None
     eval_args: list[Parameter]
     lookup_args: list[Parameter]
     untracked_args: list[str]
@@ -63,8 +55,9 @@ def _create_parser() -> argparse.ArgumentParser:
         "--group",
         "-g",
         type=str,
-        nargs="?",
+        nargs="*",
         default=None,
+        action="append",
         help="Group of experiment.  This tells mitosis to store all results for a group"
         " separately.",
     )
@@ -97,6 +90,23 @@ def _create_parser() -> argparse.ArgumentParser:
     return parser
 
 
+class CLIParam(NamedTuple):
+    step_key: str
+    track: bool
+    arg_name: str
+    var_name: str
+
+
+def _split_param_str(paramstr: str) -> CLIParam:
+    arg_name, var_name = paramstr.split("=")
+    track = True
+    if arg_name[0] == "+":
+        track = False
+        arg_name = arg_name[1:]
+    ex_step, _, arg_name = arg_name.rpartition(".")
+    return CLIParam(ex_step, track, arg_name, var_name)
+
+
 def _normalize_params(
     lookup_dict: dict[str, Any],
     ep_strs: Sequence[str] = (),
@@ -122,6 +132,9 @@ def _normalize_params(
 
 
 def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
+    ep_tups = [_split_param_str(epstr) for epstr in args.eval_param]
+    lp_tups = [_split_param_str(lpstr) for lpstr in args.param]
+
     if args.experiment:
         if len(args.experiment) > 1:
             raise RuntimeError(
@@ -130,8 +143,13 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
         if args.module:
             raise RuntimeError("Cannot use -m option if also passing experiment steps.")
         all_steps = parse_steps(args.experiment, _disk.load_mitosis_steps())
+        grp_dict = dict(grp.split(".") for grp in args.group)
     elif args.module:
-        all_steps = parse_steps([args.module], normalize_modinput(args.module))
+        mod = cast(str, args.module)
+        all_steps = parse_steps([mod], normalize_modinput(args.module))
+        ep_tups = [CLIParam(mod, track, name, val) for _, track, name, val in ep_tups]
+        lp_tups = [CLIParam(mod, track, name, val) for _, track, name, val in lp_tups]
+        grp_dict = {mod: args.group[0]} if args.group else {}
     else:
         raise RuntimeError(
             "Must set either pass a list of experiment steps "
@@ -139,21 +157,58 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
             "installed experiment module"
         )
 
-    exp_steps: list[StepDef] = []
-    # ep_groups = [_split_param_str(epstr) for epstr in args.eval_param]
-    # lp_groups = [_split_param_str(lpstr) for lpstr in args.param]
-    exps = []
-    for ex in exps:
-        exp_steps.append(
-            {
-                "name": ex,
-                "module": all_steps[ex][0],
-                "lookup": all_steps[ex][1],
-                "group": None,  # assign_group(ex, args.group),
-                "eval_params": None,  # assign_params(ex, args.eval_param),
-                "lookup_params": None,  # assign_params(ex, args.eval_param),
-            }
+    def group_and_pop(
+        list_of_clargs: list[CLIParam],
+    ) -> dict[str, list[tuple[bool, str, str]]]:
+        new_list = sorted(list_of_clargs, key=lambda tup: tup.step_key)
+        arg_groups = {k: v for k, v in groupby(new_list, key=lambda tup: tup.step_key)}
+        popped = {k: [tup[1:] for tup in l] for k, l in arg_groups.items()}
+        return popped
+
+    ep_dict = group_and_pop(ep_tups)
+    lp_dict = group_and_pop(lp_tups)
+
+    unassigned = set(ep_dict.keys()).union(lp_dict.keys()) - set(all_steps.keys())
+    if unassigned:
+        raise RuntimeError(
+            f"Steps {unassigned} not in experiment, but arguments assigned to them"
         )
+    unknown_groups = set(grp_dict.keys()) - set(all_steps.keys())
+    if unknown_groups:
+        raise RuntimeError(
+            f"Steps {unknown_groups} not in experiment, but groups assigned to them"
+        )
+
+    def create_step(
+        name: str,
+        ex: ExpRun,
+        lookup_dict: dict[str, Any],
+        eps: tuple[bool, str, str],
+        lps: tuple[bool, str, str],
+    ) -> ExpStep:
+        pass
+
+    # groups[step] could be empty...
+    exp_steps = [
+        ExpStep(
+            step,
+            runnable,
+            lookup,
+            grp_dict.get(step),  # deal with this
+            [
+                Parameter(val, arg, eval(val), evaluate=True)
+                for _, arg, val in ep_dict[step]
+            ],
+            [
+                Parameter(val, arg, lookup[arg][val], evaluate=False)
+                for _, arg, val in lp_dict[step]
+            ],
+            [arg for track, arg, _ in ep_dict[step] + lp_dict[step] if track],
+        )
+        for step, (runnable, lookup) in all_steps.items()
+    ]
+
+    exps = []
     # begin clusterfuck
     for ex in exps:
         ex_mod = cast(Experiment, import_module(ex))

@@ -111,16 +111,6 @@ def _locate_trial_folder(
     raise RuntimeError(f"Two or more matches found for {hexstr}")
 
 
-def _split_param_str(paramstr: str) -> tuple[bool, str, str, str]:
-    arg_name, var_name = paramstr.split("=")
-    track = True
-    if arg_name[0] == "+":
-        track = False
-        arg_name = arg_name[1:]
-    ex_step, _, arg_name = arg_name.rpartition(".")
-    return track, ex_step, arg_name, var_name
-
-
 def _lookup_param(
     arg_name: str, var_name: str, lookup_dict: dict[str, Any]
 ) -> Parameter:

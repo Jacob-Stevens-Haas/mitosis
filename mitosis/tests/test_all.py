@@ -158,9 +158,9 @@ def test_empty_mod_logging(tmp_path):
 
 def test_split_param_str():
     result = _split_param_str("+a=b")
-    assert result == (False, "", "a", "b")
+    assert result == ("", False, "a", "b")
     result = _split_param_str("a.b=c")
-    assert result == (True, "a", "b", "c")
+    assert result == ("a", True, "b", "c")
 
 
 def test_process_cl_params(tmp_path):
@@ -231,10 +231,3 @@ def test_normalize_modinput():
             "mitosis.tests.mock_experiment:MockExp.MockExpInner.lookup_dict",
         )
     }
-
-
-# def run(foo):
-#     return {"main": 0}
-
-
-# name = "MockModuleExperiment"
