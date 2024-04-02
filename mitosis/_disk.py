@@ -8,23 +8,28 @@ import toml
 @lru_cache
 def load_mitosis_steps(
     proj_file: Path | str = "pyproject.toml",
-) -> dict[str, list[str]]:
+) -> dict[str, tuple[str, str]]:
     """Load experiment steps saved in pyproject.toml (or other config)
 
     Args:
         pyproj_file:
             Local or absolute path to pyproject file.  default is pyproject.toml
             if local path or default, use current working directory
+    Raises:
+        Runtime error if cannot load steps, or if they are badly formed.
     """
     proj_file = _choose_toml(proj_file)
     with open(proj_file, "r") as f:
         config = toml.load(f)
     try:
-        return config["tool"]["mitosis"]["steps"]
+        result = config["tool"]["mitosis"]["steps"]
     except KeyError:
         raise RuntimeError(
             f"{proj_file.absolute()} does not have a tools.mitosis.steps table"
         )
+    if any(not isinstance(vals, list) or len(vals) != 2 for vals in result.values()):
+        raise RuntimeError("tool.mitosis.steps table is malformed")
+    return {k: tuple(v) for k, v in result.items()}
 
 
 @lru_cache

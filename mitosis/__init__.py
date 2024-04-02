@@ -632,7 +632,7 @@ def _prettyprint_config(folder: Path, params: Collection[Parameter]):
 
 
 def parse_steps(
-    keys: list[str], steps: dict[str, list[str]]
+    keys: list[str], steps: dict[str, tuple[str, str]]
 ) -> dict[str, tuple[ExpRun, dict[str, Any]]]:
     """load named steps (in entry point format)"""
 

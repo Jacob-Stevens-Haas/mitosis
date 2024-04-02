@@ -140,9 +140,9 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     exp_steps: list[StepDef] = []
-    ep_groups = [_split_param_str(epstr) for epstr in args.eval_param]
-    lp_groups = [_split_param_str(lpstr) for lpstr in args.param]
-
+    # ep_groups = [_split_param_str(epstr) for epstr in args.eval_param]
+    # lp_groups = [_split_param_str(lpstr) for lpstr in args.param]
+    exps = []
     for ex in exps:
         exp_steps.append(
             {
@@ -187,10 +187,10 @@ if __name__ == "__main__":
     main()
 
 
-def normalize_modinput(obj_ref: str) -> dict[str, list[str]]:
+def normalize_modinput(obj_ref: str) -> dict[str, tuple[str, str]]:
     modname, _, qualname = obj_ref.partition(":")
     if qualname:
         sep = ":" + qualname + "."
     else:
         sep = ":"
-    return {obj_ref: [modname + sep + "run", modname + sep + "lookup_dict"]}
+    return {obj_ref: (modname + sep + "run", modname + sep + "lookup_dict")}

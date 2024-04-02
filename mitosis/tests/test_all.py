@@ -191,6 +191,16 @@ def test_load_toml():
     assert result == expected
 
 
+def test_load_bad_toml():
+    parent = Path(__file__).resolve().parent
+    tomlfile = parent / "pyproject_missing.toml"
+    with pytest.raises(RuntimeError, match="does not have a tools"):
+        _disk.load_mitosis_steps(tomlfile)
+    tomlfile = parent / "pyproject_malformed.toml"
+    with pytest.raises(RuntimeError, match="table is malformed"):
+        _disk.load_mitosis_steps(tomlfile)
+
+
 def test_parse_steps():
     from importlib.metadata import version
     import builtins
@@ -207,19 +217,19 @@ def test_normalize_modinput():
     modinput = "mitosis.tests.mock_experiment"
     result = normalize_modinput(modinput)
     assert result == {
-        "mitosis.tests.mock_experiment": [
+        "mitosis.tests.mock_experiment": (
             "mitosis.tests.mock_experiment:run",
             "mitosis.tests.mock_experiment:lookup_dict",
-        ]
+        )
     }
     # if modinput is an object, connect to run and lookup_dict with . not :
     modinput = "mitosis.tests.mock_experiment:MockExp.MockExpInner"
     result = normalize_modinput(modinput)
     assert result == {
-        "mitosis.tests.mock_experiment:MockExp.MockExpInner": [
+        "mitosis.tests.mock_experiment:MockExp.MockExpInner": (
             "mitosis.tests.mock_experiment:MockExp.MockExpInner.run",
             "mitosis.tests.mock_experiment:MockExp.MockExpInner.lookup_dict",
-        ]
+        )
     }
 
 
