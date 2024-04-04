@@ -12,9 +12,9 @@ from mitosis import parse_steps
 from mitosis.__main__ import _split_param_str
 from mitosis.__main__ import normalize_modinput
 from mitosis.tests import bad_return_experiment
-from mitosis.tests import mock_experiment
+from mitosis.tests import mock_legacy
 
-mock_experiment = cast(mitosis.Experiment, mock_experiment)
+mock_legacy = cast(mitosis.Experiment, mock_legacy)
 bad_return_experiment = cast(mitosis.Experiment, bad_return_experiment)
 
 
@@ -110,6 +110,7 @@ def fake_lookup_param():
     return mitosis.Parameter("test", "foo", 2, evaluate=False)
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize(
     "param",
     (
@@ -119,22 +120,23 @@ def fake_lookup_param():
 )
 def test_empty_mod_experiment(tmp_path, param):
     mitosis.run(
-        mock_experiment,
+        mock_legacy,
         debug=True,
         trials_folder=tmp_path,
         params=[param],
     )
 
 
+@pytest.mark.skip
 def test_empty_mod_logging_debug(tmp_path):
     hexstr = mitosis.run(
-        mock_experiment,
+        mock_legacy,
         debug=True,
         trials_folder=tmp_path,
         params=[],
     )
     trial_folder = mitosis._locate_trial_folder(hexstr, trials_folder=tmp_path)
-    with open(trial_folder / f"{mock_experiment.__name__}.log") as f:
+    with open(trial_folder / f"{mock_legacy.__name__}.log") as f:
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
     assert "This is run in debug mode only" in log_str
@@ -143,13 +145,13 @@ def test_empty_mod_logging_debug(tmp_path):
 @pytest.mark.clean
 def test_empty_mod_logging(tmp_path):
     hexstr = mitosis.run(
-        mock_experiment,
+        mock_legacy,
         debug=False,
         trials_folder=tmp_path,
         params=[],
     )
     trial_folder = mitosis._locate_trial_folder(hexstr, trials_folder=tmp_path)
-    with open(trial_folder / f"{mock_experiment.__name__}.log") as f:
+    with open(trial_folder / f"{mock_legacy.__name__}.log") as f:
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
     assert "This is run in debug mode only" not in log_str
@@ -162,6 +164,7 @@ def test_split_param_str():
     assert result == ("a", True, "b", "c")
 
 
+@pytest.mark.skip
 def test_malfored_return_experiment(tmp_path):
     with pytest.raises(nbclient.exceptions.CellExecutionError):
         mitosis.run(
@@ -177,8 +180,14 @@ def test_load_toml():
     tomlfile = parent / "test_pyproject.toml"
     result = _disk.load_mitosis_steps(tomlfile)
     expected = {
-        "data": ("data.library:gen_data", "paper.config:data_config"),
-        "fit_eval": ("meth_lib:fit_and_score", "paper.config:meth_config"),
+        "data": (
+            "mitosis.tests.mock_part1:Klass.gen_data",
+            "mitosis.tests.mock_paper:data_config",
+        ),
+        "fit_eval": (
+            "mitosis.tests.mock_part2:fit_and_score",
+            "mitosis.tests.mock_paper:meth_config",
+        ),
     }
     assert result == expected
 

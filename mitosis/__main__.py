@@ -69,7 +69,10 @@ def _create_parser() -> argparse.ArgumentParser:
         "-e",
         type=str,
         action="append",
-        help="Parameters directly passed on command line",
+        help=(
+            "Parameters directly passed on command line.  Make sure to quote if you"
+            " want argument to evaluate as a string"
+        ),
     )
     parser.add_argument(
         "--param",

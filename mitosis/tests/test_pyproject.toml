@@ -1,3 +1,9 @@
 [tool.mitosis.steps]
-data = ["data.library:gen_data", "paper.config:data_config"]
-fit_eval = ["meth_lib:fit_and_score", "paper.config:meth_config"]
+data = [
+    "mitosis.tests.mock_part1:Klass.gen_data",
+    "mitosis.tests.mock_paper:data_config"
+]
+fit_eval = [
+    "mitosis.tests.mock_part2:fit_and_score",
+    "mitosis.tests.mock_paper:meth_config"
+]
