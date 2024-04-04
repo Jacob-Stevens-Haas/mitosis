@@ -9,7 +9,6 @@ import pytest
 import mitosis
 from mitosis import _disk
 from mitosis import parse_steps
-from mitosis.__main__ import _normalize_params
 from mitosis.__main__ import _split_param_str
 from mitosis.__main__ import normalize_modinput
 from mitosis.tests import bad_return_experiment
@@ -163,13 +162,6 @@ def test_split_param_str():
     assert result == ("a", True, "b", "c")
 
 
-def test_process_cl_params(tmp_path):
-    processed = _normalize_params({}, ['mystr="hi"', "+myint=2"], [])
-    assert all(isinstance(param.vals, str) for param in processed[0])
-    # Should handle without errors
-    _normalize_params({}, (), ())
-
-
 def test_malfored_return_experiment(tmp_path):
     with pytest.raises(nbclient.exceptions.CellExecutionError):
         mitosis.run(
@@ -185,8 +177,8 @@ def test_load_toml():
     tomlfile = parent / "test_pyproject.toml"
     result = _disk.load_mitosis_steps(tomlfile)
     expected = {
-        "data": ["data.library:gen_data", "paper.config:data_config"],
-        "fit_eval": ["meth_lib:fit_and_score", "paper.config:meth_config"],
+        "data": ("data.library:gen_data", "paper.config:data_config"),
+        "fit_eval": ("meth_lib:fit_and_score", "paper.config:meth_config"),
     }
     assert result == expected
 

@@ -1,6 +1,5 @@
 import argparse
-from collections.abc import Sequence
-from importlib import import_module
+from collections import defaultdict
 from itertools import groupby
 from pathlib import Path
 from typing import Any
@@ -8,8 +7,6 @@ from typing import cast
 from typing import NamedTuple
 
 from . import _disk
-from . import _lookup_param
-from . import Experiment
 from . import ExpRun
 from . import Parameter
 from . import parse_steps
@@ -21,8 +18,7 @@ class ExpStep(NamedTuple):
     module: ExpRun
     lookup: dict[str, Any]
     group: str | None
-    eval_args: list[Parameter]
-    lookup_args: list[Parameter]
+    args: list[Parameter]
     untracked_args: list[str]
 
 
@@ -107,33 +103,10 @@ def _split_param_str(paramstr: str) -> CLIParam:
     return CLIParam(ex_step, track, arg_name, var_name)
 
 
-def _normalize_params(
-    lookup_dict: dict[str, Any],
-    ep_strs: Sequence[str] = (),
-    lp_strs: Sequence[str] = (),
-) -> tuple[list[Parameter], list[str]]:
-    params = []
-
-    untracked_args: list[str] = []
-
-    for param in lp_strs:
-        track, arg_name, var_name = _split_param_str(param)
-        if not track:
-            untracked_args.append(arg_name)
-        params += [_lookup_param(arg_name, var_name, lookup_dict)]
-
-    for ep in ep_strs:
-        track, arg_name, var_name = _split_param_str(ep)
-        if not track:
-            untracked_args.append(arg_name)
-        params.append(Parameter(var_name, arg_name, var_name, evaluate=True))
-
-    return params, untracked_args
-
-
 def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     ep_tups = [_split_param_str(epstr) for epstr in args.eval_param]
     lp_tups = [_split_param_str(lpstr) for lpstr in args.param]
+    grp_dict: defaultdict[str, None | str] = defaultdict(lambda: None)
 
     if args.experiment:
         if len(args.experiment) > 1:
@@ -143,13 +116,14 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
         if args.module:
             raise RuntimeError("Cannot use -m option if also passing experiment steps.")
         all_steps = parse_steps(args.experiment, _disk.load_mitosis_steps())
-        grp_dict = dict(grp.split(".") for grp in args.group)
+        grp_dict.update(tuple(grp.split(".", 1)) for grp in args.group)
     elif args.module:
         mod = cast(str, args.module)
         all_steps = parse_steps([mod], normalize_modinput(args.module))
         ep_tups = [CLIParam(mod, track, name, val) for _, track, name, val in ep_tups]
         lp_tups = [CLIParam(mod, track, name, val) for _, track, name, val in lp_tups]
-        grp_dict = {mod: args.group[0]} if args.group else {}
+        if args.group:
+            grp_dict[mod] = args.group[0]
     else:
         raise RuntimeError(
             "Must set either pass a list of experiment steps "
@@ -181,53 +155,44 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
 
     def create_step(
         name: str,
-        ex: ExpRun,
-        lookup_dict: dict[str, Any],
-        eps: tuple[bool, str, str],
-        lps: tuple[bool, str, str],
+        part_step: tuple[ExpRun, dict[str, Any]],
+        group: str | None,
+        eps: list[tuple[bool, str, str]],
+        lps: list[tuple[bool, str, str]],
     ) -> ExpStep:
-        pass
+        runnable, lookup = part_step
+        params = []
+        untracked_args = []
+        for track, arg_name, var_name in eps:
+            params.append(Parameter(var_name, arg_name, var_name, evaluate=True))
+            if not track:
+                untracked_args.append(arg_name)
+        for track, arg_name, var_name in lps:
+            params.append(Parameter(var_name, arg_name, lookup[arg_name][var_name]))
+            if not track:
+                untracked_args.append(arg_name)
+        return ExpStep(name, runnable, lookup, group, params, untracked_args)
 
     # groups[step] could be empty...
     exp_steps = [
-        ExpStep(
-            step,
-            runnable,
-            lookup,
-            grp_dict.get(step),  # deal with this
-            [
-                Parameter(val, arg, eval(val), evaluate=True)
-                for _, arg, val in ep_dict[step]
-            ],
-            [
-                Parameter(val, arg, lookup[arg][val], evaluate=False)
-                for _, arg, val in lp_dict[step]
-            ],
-            [arg for track, arg, _ in ep_dict[step] + lp_dict[step] if track],
+        create_step(
+            step_name,
+            all_steps[step_name],
+            grp_dict[step_name],
+            ep_dict[step_name],
+            lp_dict[step_name],
         )
-        for step, (runnable, lookup) in all_steps.items()
+        for step_name in all_steps.keys()
     ]
-
-    exps = []
-    # begin clusterfuck
-    for ex in exps:
-        ex_mod = cast(Experiment, import_module(ex))
-    params, untracked_args = _normalize_params(  # here
-        ex_mod.lookup_dict, args.eval_param, args.param
-    )
 
     if args.folder is None:
         folder = Path(_disk.get_repo().working_dir) / "trials"
     else:
         folder = Path(args.folder)
     return {
-        "ex": exps,  # and ehre
+        "ex": exp_steps,
         "debug": args.debug,
-        "group": args.group,  # also here
-        "dbfile": args.experiment,  # here
-        "params": params,
         "trials_folder": folder,
-        "untracked_params": untracked_args,
     }
 
 
