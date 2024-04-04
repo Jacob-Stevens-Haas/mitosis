@@ -7,19 +7,11 @@ from typing import cast
 from typing import NamedTuple
 
 from . import _disk
-from . import ExpRun
-from . import Parameter
 from . import parse_steps
 from . import run
-
-
-class ExpStep(NamedTuple):
-    name: str
-    module: ExpRun
-    lookup: dict[str, Any]
-    group: str | None
-    args: list[Parameter]
-    untracked_args: list[str]
+from ._typing import ExpRun
+from ._typing import ExpStep
+from ._typing import Parameter
 
 
 def _create_parser() -> argparse.ArgumentParser:
@@ -193,7 +185,7 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     else:
         folder = Path(args.folder)
     return {
-        "ex": exp_steps,
+        "steps": exp_steps,
         "debug": args.debug,
         "trials_folder": folder,
     }

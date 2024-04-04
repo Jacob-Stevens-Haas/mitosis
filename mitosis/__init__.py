@@ -2,13 +2,12 @@ import logging
 import pprint
 import sys
 from collections import OrderedDict
-from dataclasses import dataclass
-from dataclasses import field
 from datetime import datetime
 from datetime import timezone
 from importlib import import_module
 from importlib.metadata import packages_distributions
 from importlib.metadata import version
+from logging import Logger
 from pathlib import Path
 from random import choices
 from time import process_time
@@ -48,6 +47,8 @@ from sqlalchemy import update
 from . import _disk
 from ._typing import Experiment
 from ._typing import ExpRun
+from ._typing import ExpStep
+from ._typing import Parameter
 
 
 def trials_columns():
@@ -66,24 +67,6 @@ def variant_types():
         Column("name", String, primary_key=True),
         Column("params", String, unique=False),
     ]
-
-
-@dataclass
-class Parameter:
-    """An experimental parameter
-
-    Arguments:
-        var_name: short name for the variant (particular values) across use cases
-        arg_name: name of arg known to experiment
-        vals: value of the parameter
-        eval: whether variant name should be evaluated or looked up.
-    """
-
-    var_name: str
-    arg_name: str
-    vals: Any
-    # > 3.10 only: https://stackoverflow.com/a/49911616/534674
-    evaluate: bool = field(default=False, kw_only=True)
 
 
 def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
@@ -124,7 +107,7 @@ def _lookup_param(
 class DBHandler(logging.Handler):
     def __init__(
         self,
-        filename: str,
+        filename: Path | str,
         table_name: str,
         cols: List[Column],
         separator: str = "--",
@@ -171,7 +154,7 @@ class DBHandler(logging.Handler):
         return msg.split(self.separator)
 
 
-def _init_logger(trial_log, table_name, debug):
+def _init_logger(trial_log: Path, table_name: str, debug: bool) -> tuple[Logger, Table]:
     """Create a Trials logger with a database handler"""
     exp_logger = logging.Logger("experiments")
     exp_logger.setLevel(20)
@@ -182,17 +165,17 @@ def _init_logger(trial_log, table_name, debug):
     return exp_logger, db_h.log_table
 
 
-def _init_variant_table(trial_log, param: Parameter):
-    eng = create_engine("sqlite:///" + str(trial_log))
+def _init_variant_table(trial_db: Path, step: str, param: Parameter) -> Table:
+    eng = create_engine("sqlite:///" + str(trial_db))
     md = MetaData()
-    var_table = Table(f"variant_{param.arg_name}", md, *variant_types())
+    var_table = Table(f"{step}_variant_{param.arg_name}", md, *variant_types())
     inspector = inspection.inspect(eng)
-    if not inspector.has_table(f"variant_{param.arg_name}"):
+    if not inspector.has_table(f"{step}_variant_{param.arg_name}"):
         md.create_all(eng)
     return var_table
 
 
-def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
+def _verify_variant_name(trial_db: Path, step: str, param: Parameter) -> None:
     """Check for conflicts between variant names in prior trials
 
     Side effects:
@@ -201,7 +184,7 @@ def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
     """
     eng = create_engine("sqlite:///" + str(trial_db))
     md = MetaData()
-    tb = Table(f"variant_{param.arg_name}", md, *variant_types())
+    tb = Table(f"{step}_variant_{param.arg_name}", md, *variant_types())
     vals: Collection[Any]
     if isinstance(param.vals, Mapping):
         vals = StrictlyReproduceableDict({k: v for k, v in sorted(param.vals.items())})
@@ -227,7 +210,9 @@ def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
     # Otherwise, parameter has already been registered and no conflicts
 
 
-def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
+def _id_variant_iteration(
+    trial_db: Path, trials_table: Table, master_variant: str
+) -> int:
     """Identify the iteration for this exact variant of the trial
 
     Args:
@@ -242,7 +227,7 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
         prob_params (dict): Parameters used to create the problem/solver
             in the experiment
     """
-    eng = create_engine("sqlite:///" + str(trial_log))
+    eng = create_engine("sqlite:///" + str(trial_db))
     stmt = select(trials_table).where(trials_table.c.variant == master_variant)
     df = pd.read_sql(stmt, eng)
     if df.empty:
@@ -252,6 +237,7 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
 
 
 def _lock_in_variant(
+    step: str,
     params: Sequence[Parameter],
     untracked_params: Collection[str],
     trial_db: Path,
@@ -261,42 +247,45 @@ def _lock_in_variant(
     for param in params:
         if debug or param.arg_name in untracked_params:
             continue
-        _init_variant_table(trial_db, param)
-        _verify_variant_name(trial_db, param)
+        _init_variant_table(trial_db, step, param)
+        _verify_variant_name(trial_db, step, param)
     var_names = [param.var_name for param in params]
     arg_names = [param.arg_name for param in params]
     if not arg_names:
         return "noparams"
-    return "-".join(
+    return f"{step}-" + "-".join(
         [x for _, x in sorted(zip(arg_names, var_names), key=lambda pair: pair[0])]
     )
 
 
+def _get_commit_and_project_root(debug: bool) -> tuple[str, Path]:
+    repo = _disk.get_repo()
+    commit = "0000000" if debug else repo.head.commit.hexsha
+    if repo.is_dirty():
+        raise RuntimeError(
+            "Git Repo is dirty.  For repeatable tests,"
+            " clean the repo by committing or stashing all changes and "
+            "untracked files."
+        )
+    return commit, Path(repo.working_dir)
+
+
 def run(
-    exps: list[Experiment],
+    steps: list[ExpStep],
     debug: bool = False,
     *,
-    group: str | None = None,
-    params: Sequence[Parameter] = (),
     trials_folder: Path,
     output_extension: str = "html",
-    untracked_params: Collection[str] = (),
     matplotlib_dpi: int = 72,
 ) -> str:
     """Run the selected experiment.
 
     Arguments:
-        ex: The experiment steps to run
+        exps: The experiment steps to run
         debug (bool): Whether to run in debugging mode or not.
-        group (str): Trial grouping.  Name a group if desiring to
-            segregate trials using the same experiment code.  ex.run()
-            must take a "group" argument.
-        params: The assigned parameter dictionaries to generate and
-            solve the problem.
         trials_folder: The folder to store output, database, log, and metadata.
         output_extension: what output type to produce using nbconvert.
             Either 'html' or 'ipynb'.
-        untracked_params: names of parameters to not track in database
         matplotlib_dpi: dpi for matplotlib images.  Not yet
             functional.
 
@@ -304,30 +293,25 @@ def run(
         The pseudorandom key to this experiment
     """
 
-    repo = _disk.get_repo()
-    if debug:
-        commit = "0000000"
-    else:
-        if repo.is_dirty():
-            raise RuntimeError(
-                "Git Repo is dirty.  For repeatable tests,"
-                " clean the repo by committing or stashing all changes and "
-                "untracked files."
-            )
-        commit = repo.head.commit.hexsha
-
+    commit, _ = _get_commit_and_project_root(debug)
     trials_folder = Path(trials_folder).absolute()
     if not trials_folder.exists():
         trials_folder.mkdir(parents=True)
-    dbfile = "_".join(ex.__name__ for ex in exps) + ".db"
+    exp_name = "_".join(
+        step.name + (f"_{step.group}" if step.group else "") for step in steps
+    )
+    dbfile = exp_name + ".db"
     trial_db = trials_folder / dbfile
-    master_variant = _lock_in_variant(params, untracked_params, trial_db, debug)
-    exps = exps[0]
-    experiments_table = f"trials_{exps.name}"
-    params = list(params)
-    if group is not None:
-        experiments_table += f" {group}"
-        params.append(Parameter(f"'{group}'", "group", group, evaluate=True))
+    master_variant = "+".join(
+        _lock_in_variant(step.name, step.args, step.untracked_args, trial_db, debug)
+        for step in steps
+    )
+    experiments_table = f"trials_{exp_name}"
+    for step in steps:
+        if step.group is not None:
+            step.args.append(
+                Parameter(f"'{step.group}'", "group", step.group, evaluate=True)
+            )
     exp_logger, trials_table = _init_logger(trial_db, experiments_table, debug)
     iteration = (
         0 if debug else _id_variant_iteration(trial_db, trials_table, master_variant)
@@ -335,16 +319,16 @@ def run(
     rand_key = "".join(choices(list("0123456789abcde"), k=6))
 
     out_filename = _create_filename(
-        exps.name, group, debug, master_variant, iteration, rand_key, output_extension
+        master_variant, debug, iteration, rand_key, output_extension
     )
     exp_metadata_folder = _make_metadata_folder(trials_folder, rand_key)
     _write_freezefile(exp_metadata_folder)
 
     start_time = _log_start_experiment(
-        exps.name, exp_logger, master_variant, iteration, commit, debug
+        exp_logger, master_variant, iteration, commit, debug
     )
     nb, metric, exc = _run_in_notebook(
-        exps,
+        steps,
         {p.arg_name: p.var_name for p in params if not p.evaluate},
         {p.arg_name: p.var_name for p in params if p.evaluate},
         exp_metadata_folder,
@@ -537,18 +521,13 @@ def _make_metadata_folder(trials_folder: Path, rand_key: str) -> Path:
 
 
 def _create_filename(
-    ex_name: str,
-    group: Optional[str],
-    debug: bool,
     variant: str,
+    debug: bool,
     iteration: int,
     suffix: Optional[str],
     extension: str,
 ) -> str:
-    new_filename = f"trial_{ex_name}"
-    if group is not None:
-        new_filename += f"_{group}"
-    new_filename += f"_{variant}_{iteration}_{suffix}"
+    new_filename = f"trial_{variant}_{iteration}_{suffix}"
     if debug:
         new_filename += "debug"
     elif extension == "html":
@@ -559,7 +538,6 @@ def _create_filename(
 
 
 def _log_start_experiment(
-    name: str,
     exp_logger: logging.Logger,
     variant: str,
     iteration: int,
@@ -570,7 +548,7 @@ def _log_start_experiment(
     utc_now = datetime.now(timezone.utc)
     cpu_now = process_time()
     log_msg = (
-        f"Running experiment {name}, simulation variant {variant}, "
+        f"Running experiment {variant}, "
         f"iteration {iteration} at time: "
         + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
         + f".  Current repo hash: {commit}"
