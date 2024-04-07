@@ -8,7 +8,7 @@ import pytest
 
 import mitosis
 from mitosis import _disk
-from mitosis import parse_steps
+from mitosis import unpack
 from mitosis.__main__ import _split_param_str
 from mitosis.__main__ import normalize_modinput
 from mitosis.tests import bad_return_experiment
@@ -202,16 +202,12 @@ def test_load_bad_toml():
         _disk.load_mitosis_steps(tomlfile)
 
 
-def test_parse_steps():
+def test_unpack():
     from importlib.metadata import version
-    import builtins
 
-    steps = {
-        "want": (("importlib.metadata:version"), ("builtins:__dict__")),
-        "dont_want": (("foo:bar"), ("baz.qux")),
-    }
-    result = parse_steps(["want"], steps)
-    assert result == {"want": (version, vars(builtins))}
+    obj_ref = "importlib.metadata:version"
+    result = unpack(obj_ref)
+    assert result is version
 
 
 def test_normalize_modinput():

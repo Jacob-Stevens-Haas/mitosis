@@ -41,7 +41,9 @@ class Parameter:
 class ExpStep(NamedTuple):
     name: str
     action: ExpRun
+    action_ref: str
     lookup: dict[str, Any]
+    lookup_ref: str
     group: str | None
     args: list[Parameter]
     untracked_args: list[str]

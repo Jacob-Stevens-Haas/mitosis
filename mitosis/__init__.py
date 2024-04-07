@@ -16,7 +16,6 @@ from types import BuiltinMethodType
 from types import FunctionType
 from types import MethodType
 from typing import Any
-from typing import cast
 from typing import Collection
 from typing import Hashable
 from typing import List
@@ -32,6 +31,7 @@ import sqlalchemy as sql
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers.files import FilesWriter
+from nbformat import NotebookNode
 from sqlalchemy import Column
 from sqlalchemy import create_engine
 from sqlalchemy import Float
@@ -45,8 +45,6 @@ from sqlalchemy import Table
 from sqlalchemy import update
 
 from . import _disk
-from ._typing import Experiment
-from ._typing import ExpRun
 from ._typing import ExpStep
 from ._typing import Parameter
 
@@ -329,8 +327,6 @@ def run(
     )
     nb, metric, exc = _run_in_notebook(
         steps,
-        {p.arg_name: p.var_name for p in params if not p.evaluate},
-        {p.arg_name: p.var_name for p in params if p.evaluate},
         exp_metadata_folder,
         matplotlib_dpi,
         debug=debug,
@@ -347,62 +343,74 @@ def run(
 
 
 def _run_in_notebook(
-    ex: Experiment,
-    lookup_params: dict[str, str],
-    eval_params: dict[str, str],
+    steps: list[ExpStep],
     trials_folder: Path,
     matplotlib_dpi=72,
     debug: bool = False,
 ) -> tuple[nbformat.NotebookNode, Optional[str], Optional[Exception]]:
-    ex_module = ex.__name__
-    ex_file = ex.__file__
     code = (
         "import importlib\n"
         "import logging\n"
+        "import sys\n"
+        "from pathlib import Path\n\n"
         "import matplotlib as mpl\n"
         "import dill\n"
-        "import sys\n\n"
-        f"ex = importlib.import_module('{ex_module}', '{ex_file}')\n\n"
+        "import mitosis\n\n"
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
-        f"logger = logging.getLogger('{ex_module}')\n"
-        'print(f"Running {ex.name}.run()")\n'
+        "in = None\n"
     )
-    code += (
-        "logger.setLevel(logging.DEBUG)\n"
-        if debug
-        else "logger.setLevel(logging.INFO)\n"
-    )
-    logfile = trials_folder / f"{ex_module}.log"
-    code += f"logger.addHandler(logging.FileHandler('{logfile}', delay=True))\n"
-
     nb = nbformat.v4.new_notebook()
     setup_cell = nbformat.v4.new_code_cell(source=code)
-    resolve_code = (
-        "import mitosis\n"
-        "from pathlib import Path\n"
-        "resolved_args = {}\n"
-        f"for arg_name, var_name in {lookup_params}.items():\n"
-        "    val = mitosis._resolve_param(arg_name, var_name, ex.lookup_dict).vals\n"
-        "    resolved_args.update({arg_name: val}) \n"
-        "    print(arg_name,'=',resolved_args[arg_name])\n\n"
-        f"for arg_name, var_name in {eval_params}.items():\n"
-        "    val = eval(var_name)\n"
-        "    resolved_args.update({arg_name: val}) \n"
-        "    print(arg_name,'=',resolved_args[arg_name])\n\n"
-        f"mitosis._prettyprint_config(Path('{trials_folder}'), resolved_args)\n"
-        f"print('Saving metadata to {trials_folder}')\n"
-    )
-    resolve_cell = nbformat.v4.new_code_cell(source=resolve_code)
-    run_cell = nbformat.v4.new_code_cell(source="results = ex.run(**resolved_args)")
-    result_cell = nbformat.v4.new_code_cell(
-        source=""
-        f"with open(r'{trials_folder / ('results.dill')}', 'wb') as f:\n"  # noqa E501
-        "  dill.dump(results, f)\n"
-        "print(repr(results))\n"
-    )
-    metrics_cell = nbformat.v4.new_code_cell(source="print(results['main'])")
-    nb["cells"] = [setup_cell, resolve_cell, run_cell, result_cell, metrics_cell]
+    step_loader_cells: list[NotebookNode] = []
+    step_runner_cells: list[NotebookNode] = []
+    for order, step in enumerate(steps):
+        lookup_params = ({a.arg_name: a.var_name for a in step.args if not a.evaluate},)
+        eval_params = ({a.arg_name: a.var_name for a in step.args if a.evaluate},)
+
+        code = (
+            (
+                f"step_{order} = mitosis.unpack({step.action_ref})\n"
+                f"lookup_{order} = mitosis.unpack({step.lookup_ref})\n"
+                f"resolved_args_{order} = {{}}\n"
+                f"logger = logging.getLogger('{step.action.__module__}')\n"
+            )
+            + (
+                "logger.setLevel(logging.DEBUG)\n"
+                if debug
+                else "logger.setLevel(logging.INFO)\n"
+            )
+            + (
+                f"logger.addHandler(logging.FileHandler('experiment.log', delay=True))\n"  # noqa E501
+                f'print("Loaded step {order} as {step.action_ref}")\n'
+                f'print("Loaded lookup {order} as {step.lookup_ref}")\n'
+                f"for arg_name, var_name in {lookup_params}.items():\n"
+                f"    val = mitosis._resolve_param(arg_name, var_name, lookup_{order}).vals\n"  # noqa E501
+                f"    resolved_args_{order}.update({{arg_name: val}}) \n"
+                f"    print(arg_name,'=',resolved_args_{order}[arg_name])\n\n"
+                f"for arg_name, var_name in {eval_params}.items():\n"
+                f"    val = eval(var_name)\n"
+                f"    resolved_args_{order}.update({{arg_name: val}}) \n"
+                f"    print(arg_name,'=',resolved_args_{order}[arg_name])\n\n"
+                f"mitosis._prettyprint_config(Path('{trials_folder}'), resolved_args_{order})\n"  # noqa E501
+                f"print('Saving metadata to {trials_folder}')\n"
+            )
+        )
+        step_loader_cells.append(nbformat.v4.new_code_cell(source=code))
+
+        code = (
+            f"if in is not None:\n"
+            f"    results = step_{order}(in, **resolved_args_{order})\n"
+            f"else:\n"
+            f"    results = step_{order}(**resolved_args_{order})\n"
+            f"with open(r'{trials_folder / (f'results_{order}.dill')}', 'wb') as f:\n"  # noqa E501
+            f"    dill.dump(results, f)\n"
+            f"print(repr(results))\n"
+            f"in = results"
+        )
+        step_runner_cells.append(nbformat.v4.new_code_cell(source=code))
+
+    nb["cells"] = [setup_cell] + step_loader_cells + step_runner_cells
 
     kernel_name = _create_kernel()
     ep = ExecutePreprocessor(timeout=-1, kernel=kernel_name)
@@ -599,17 +607,9 @@ def _prettyprint_config(folder: Path, params: Collection[Parameter]):
         f.write(pretty)
 
 
-def parse_steps(
-    keys: list[str], steps: dict[str, tuple[str, str]]
-) -> dict[str, tuple[ExpRun, dict[str, Any]]]:
-    """load named steps (in entry point format)"""
-
-    def unpack(obj_ref: str) -> Any:
-        modname, _, qualname = obj_ref.partition(":")
-        obj = import_module(modname)
-        for attr in qualname.split("."):
-            obj = getattr(obj, attr)
-        return obj
-
-    result = {key: (unpack(steps[key][0]), unpack(steps[key][1])) for key in keys}
-    return cast(dict[str, tuple[ExpRun, dict[str, Any]]], result)
+def unpack(obj_ref: str) -> Any:
+    modname, _, qualname = obj_ref.partition(":")
+    obj = import_module(modname)
+    for attr in qualname.split("."):
+        obj = getattr(obj, attr)
+    return obj

@@ -3,12 +3,11 @@ from collections import defaultdict
 from itertools import groupby
 from pathlib import Path
 from typing import Any
-from typing import cast
 from typing import NamedTuple
 
 from . import _disk
-from . import parse_steps
 from . import run
+from . import unpack
 from ._typing import ExpRun
 from ._typing import ExpStep
 from ._typing import Parameter
@@ -104,17 +103,14 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     grp_dict: defaultdict[str, None | str] = defaultdict(lambda: None)
 
     if args.experiment:
-        if len(args.experiment) > 1:
-            raise RuntimeError(
-                "Multi-step experiments not supported yet, check back tomorrow"
-            )
         if args.module:
             raise RuntimeError("Cannot use -m option if also passing experiment steps.")
-        all_steps = parse_steps(args.experiment, _disk.load_mitosis_steps())
+        proj_steps = _disk.load_mitosis_steps()
+        steps = dict(filter(lambda k: k[0] in args.experiment, proj_steps.items()))
         grp_dict.update(tuple(grp.split(".", 1)) for grp in args.group)
     elif args.module:
-        mod = cast(str, args.module)
-        all_steps = parse_steps([mod], normalize_modinput(args.module))
+        mod: str = args.module
+        steps = normalize_modinput(args.module)
         ep_tups = [CLIParam(mod, track, name, val) for _, track, name, val in ep_tups]
         lp_tups = [CLIParam(mod, track, name, val) for _, track, name, val in lp_tups]
         if args.group:
@@ -125,6 +121,10 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
             "(defined in pyproject.toml) or use the -m flag to pass a single"
             "installed experiment module"
         )
+    all_steps: dict[str, tuple[tuple[str, ExpRun], tuple[str, dict[str, Any]]]] = {
+        k: ((runner, unpack(runner)), (lookup, unpack(lookup)))
+        for k, (runner, lookup) in steps.items()
+    }
 
     def group_and_pop(
         list_of_clargs: list[CLIParam],
@@ -150,12 +150,12 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
 
     def create_step(
         name: str,
-        part_step: tuple[ExpRun, dict[str, Any]],
+        part_step: tuple[tuple[str, ExpRun], tuple[str, dict[str, Any]]],
         group: str | None,
         eps: list[tuple[bool, str, str]],
         lps: list[tuple[bool, str, str]],
     ) -> ExpStep:
-        runnable, lookup = part_step
+        (run_ref, runnable), (lookup_ref, lookup) = part_step
         params = []
         untracked_args = []
         for track, arg_name, var_name in eps:
@@ -166,7 +166,9 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
             params.append(Parameter(var_name, arg_name, lookup[arg_name][var_name]))
             if not track:
                 untracked_args.append(arg_name)
-        return ExpStep(name, runnable, lookup, group, params, untracked_args)
+        return ExpStep(
+            name, runnable, run_ref, lookup, lookup_ref, group, params, untracked_args
+        )
 
     # groups[step] could be empty...
     exp_steps = [
