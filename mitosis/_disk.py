@@ -14,7 +14,7 @@ def load_mitosis_steps(
     Args:
         pyproj_file:
             Local or absolute path to pyproject file.  default is pyproject.toml
-            if local path or default, use current working directory
+            if local path or default, use current git repo's top level directory
     Raises:
         Runtime error if cannot load steps, or if they are badly formed.
     """
@@ -38,12 +38,11 @@ def get_repo() -> git.Repo:
     return repo
 
 
-def _choose_toml(filename: Path | str) -> Path:
+def _choose_toml(filename: Path | str | None) -> Path:
     repo = get_repo()
     directory = Path(repo.working_dir)
     if filename is None:
-        filename = directory / "pyproject.toml"
-    else:
-        if not Path(filename).is_absolute():
-            filename = directory / filename
+        return directory / "pyproject.toml"
+    elif not Path(filename).is_absolute():
+        return directory / filename
     return Path(filename)

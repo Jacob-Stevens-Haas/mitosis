@@ -1,7 +1,6 @@
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import cast
 
 import nbclient.exceptions
 import pytest
@@ -13,9 +12,6 @@ from mitosis.__main__ import _split_param_str
 from mitosis.__main__ import normalize_modinput
 from mitosis.tests import bad_return_experiment
 from mitosis.tests import mock_legacy
-
-mock_legacy = cast(mitosis.Experiment, mock_legacy)
-bad_return_experiment = cast(mitosis.Experiment, bad_return_experiment)
 
 
 def test_reproduceable_dict():
@@ -110,7 +106,6 @@ def fake_lookup_param():
     return mitosis.Parameter("test", "foo", 2, evaluate=False)
 
 
-@pytest.mark.skip
 @pytest.mark.parametrize(
     "param",
     (
@@ -127,7 +122,6 @@ def test_empty_mod_experiment(tmp_path, param):
     )
 
 
-@pytest.mark.skip
 def test_empty_mod_logging_debug(tmp_path):
     hexstr = mitosis.run(
         mock_legacy,
@@ -164,7 +158,6 @@ def test_split_param_str():
     assert result == ("a", True, "b", "c")
 
 
-@pytest.mark.skip
 def test_malfored_return_experiment(tmp_path):
     with pytest.raises(nbclient.exceptions.CellExecutionError):
         mitosis.run(

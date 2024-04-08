@@ -1,5 +1,4 @@
 import argparse
-from collections import defaultdict
 from itertools import groupby
 from pathlib import Path
 from typing import Any
@@ -39,14 +38,10 @@ def _create_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--group",
-        "-g",
+        "--config",
         type=str,
-        nargs="*",
-        default=None,
-        action="append",
-        help="Group of experiment.  This tells mitosis to store all results for a group"
-        " separately.",
+        default="pyproject.toml",
+        help="Name or path of config file",
     )
     parser.add_argument(
         "--folder",
@@ -100,21 +95,17 @@ def _split_param_str(paramstr: str) -> CLIParam:
 def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     ep_tups = [_split_param_str(epstr) for epstr in args.eval_param]
     lp_tups = [_split_param_str(lpstr) for lpstr in args.param]
-    grp_dict: defaultdict[str, None | str] = defaultdict(lambda: None)
 
     if args.experiment:
         if args.module:
             raise RuntimeError("Cannot use -m option if also passing experiment steps.")
-        proj_steps = _disk.load_mitosis_steps()
+        proj_steps = _disk.load_mitosis_steps(args.config)
         steps = dict(filter(lambda k: k[0] in args.experiment, proj_steps.items()))
-        grp_dict.update(tuple(grp.split(".", 1)) for grp in args.group)
     elif args.module:
         mod: str = args.module
         steps = normalize_modinput(args.module)
         ep_tups = [CLIParam(mod, track, name, val) for _, track, name, val in ep_tups]
         lp_tups = [CLIParam(mod, track, name, val) for _, track, name, val in lp_tups]
-        if args.group:
-            grp_dict[mod] = args.group[0]
     else:
         raise RuntimeError(
             "Must set either pass a list of experiment steps "
@@ -130,7 +121,9 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
         list_of_clargs: list[CLIParam],
     ) -> dict[str, list[tuple[bool, str, str]]]:
         new_list = sorted(list_of_clargs, key=lambda tup: tup.step_key)
-        arg_groups = {k: v for k, v in groupby(new_list, key=lambda tup: tup.step_key)}
+        arg_groups = {
+            k: list(v) for k, v in groupby(new_list, key=lambda tup: tup.step_key)
+        }
         popped = {k: [tup[1:] for tup in l] for k, l in arg_groups.items()}
         return popped
 
@@ -142,16 +135,10 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
         raise RuntimeError(
             f"Steps {unassigned} not in experiment, but arguments assigned to them"
         )
-    unknown_groups = set(grp_dict.keys()) - set(all_steps.keys())
-    if unknown_groups:
-        raise RuntimeError(
-            f"Steps {unknown_groups} not in experiment, but groups assigned to them"
-        )
 
     def create_step(
         name: str,
         part_step: tuple[tuple[str, ExpRun], tuple[str, dict[str, Any]]],
-        group: str | None,
         eps: list[tuple[bool, str, str]],
         lps: list[tuple[bool, str, str]],
     ) -> ExpStep:
@@ -167,7 +154,7 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
             if not track:
                 untracked_args.append(arg_name)
         return ExpStep(
-            name, runnable, run_ref, lookup, lookup_ref, group, params, untracked_args
+            name, runnable, run_ref, lookup, lookup_ref, None, params, untracked_args
         )
 
     # groups[step] could be empty...
@@ -175,9 +162,8 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
         create_step(
             step_name,
             all_steps[step_name],
-            grp_dict[step_name],
-            ep_dict[step_name],
-            lp_dict[step_name],
+            ep_dict.get(step_name, []),
+            lp_dict.get(step_name, []),
         )
         for step_name in all_steps.keys()
     ]

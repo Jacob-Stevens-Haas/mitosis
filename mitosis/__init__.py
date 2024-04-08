@@ -406,7 +406,7 @@ def _run_in_notebook(
             f"with open(r'{trials_folder / (f'results_{order}.dill')}', 'wb') as f:\n"  # noqa E501
             f"    dill.dump(results, f)\n"
             f"print(repr(results))\n"
-            f"in = results"
+            f"in = results['data']"
         )
         step_runner_cells.append(nbformat.v4.new_code_cell(source=code))
 
