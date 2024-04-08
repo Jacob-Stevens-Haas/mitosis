@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 import git
 import toml
@@ -46,3 +47,22 @@ def _choose_toml(filename: Path | str | None) -> Path:
     elif not Path(filename).is_absolute():
         return directory / filename
     return Path(filename)
+
+
+def _locate_trial_folder(
+    hexstr: str, *, trials_folder: Optional[Path | str] = None
+) -> Path:
+    if trials_folder is None:
+        trials_folder = Path().absolute()
+    else:
+        trials_folder = Path(trials_folder).resolve()
+    matches = trials_folder.glob(f"*{hexstr}")
+    try:
+        first = next(matches)
+    except StopIteration:
+        raise FileNotFoundError(f"Could not find a trial that matched {hexstr}")
+    try:
+        next(matches)
+    except StopIteration:
+        return first
+    raise RuntimeError(f"Two or more matches found for {hexstr}")

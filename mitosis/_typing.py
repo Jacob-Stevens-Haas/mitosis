@@ -8,8 +8,7 @@ from typing import Protocol
 
 
 class ExpRun(Protocol):  # Can't handle Varargs
-    def __call__(self, *args: Any) -> dict:
-        ...
+    def __call__(self, *args: Any, **kwargs: Any) -> dict: ...  # noqa: E704
 
 
 class Experiment(ModuleType, metaclass=ABCMeta):

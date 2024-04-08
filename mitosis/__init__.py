@@ -4,6 +4,7 @@ import sys
 from collections import OrderedDict
 from datetime import datetime
 from datetime import timezone
+from glob import glob
 from importlib import import_module
 from importlib.metadata import packages_distributions
 from importlib.metadata import version
@@ -47,6 +48,7 @@ from sqlalchemy import update
 from . import _disk
 from ._typing import ExpStep
 from ._typing import Parameter
+from mitosis._disk import _locate_trial_folder
 
 
 def trials_columns():
@@ -69,27 +71,12 @@ def variant_types():
 
 def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
     trial = _locate_trial_folder(hexstr, trials_folder=trials_folder)
-    with open(trial / "results.dill", "rb") as fh:
-        return dill.load(fh)
-
-
-def _locate_trial_folder(
-    hexstr: str, *, trials_folder: Optional[Path | str] = None
-) -> Path:
-    if trials_folder is None:
-        trials_folder = Path().absolute()
-    else:
-        trials_folder = Path(trials_folder).resolve()
-    matches = trials_folder.glob(f"*{hexstr}")
-    try:
-        first = next(matches)
-    except StopIteration:
-        raise FileNotFoundError(f"Could not find a trial that matched {hexstr}")
-    try:
-        next(matches)
-    except StopIteration:
-        return first
-    raise RuntimeError(f"Two or more matches found for {hexstr}")
+    all_files = glob("results*.dill", root_dir=trial)
+    results = []
+    for file in all_files:
+        with open(trial / file, "rb") as fh:
+            results.append(dill.load(fh))
+    return results
 
 
 def _lookup_param(
@@ -259,7 +246,7 @@ def _lock_in_variant(
 def _get_commit_and_project_root(debug: bool) -> tuple[str, Path]:
     repo = _disk.get_repo()
     commit = "0000000" if debug else repo.head.commit.hexsha
-    if repo.is_dirty():
+    if not debug and repo.is_dirty():
         raise RuntimeError(
             "Git Repo is dirty.  For repeatable tests,"
             " clean the repo by committing or stashing all changes and "
@@ -349,29 +336,27 @@ def _run_in_notebook(
     debug: bool = False,
 ) -> tuple[nbformat.NotebookNode, Optional[str], Optional[Exception]]:
     code = (
-        "import importlib\n"
         "import logging\n"
-        "import sys\n"
         "from pathlib import Path\n\n"
         "import matplotlib as mpl\n"
         "import dill\n"
         "import mitosis\n\n"
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
-        "in = None\n"
+        "inputs = None\n"
     )
     nb = nbformat.v4.new_notebook()
     setup_cell = nbformat.v4.new_code_cell(source=code)
     step_loader_cells: list[NotebookNode] = []
     step_runner_cells: list[NotebookNode] = []
     for order, step in enumerate(steps):
-        lookup_params = ({a.arg_name: a.var_name for a in step.args if not a.evaluate},)
-        eval_params = ({a.arg_name: a.var_name for a in step.args if a.evaluate},)
+        lookup_params = {a.arg_name: a.var_name for a in step.args if not a.evaluate}
+        eval_params = {a.arg_name: a.var_name for a in step.args if a.evaluate}
 
         code = (
             (
-                f"step_{order} = mitosis.unpack({step.action_ref})\n"
-                f"lookup_{order} = mitosis.unpack({step.lookup_ref})\n"
+                f"step_{order} = mitosis.unpack('{step.action_ref}')\n"
+                f"lookup_{order} = mitosis.unpack('{step.lookup_ref}')\n"
                 f"resolved_args_{order} = {{}}\n"
                 f"logger = logging.getLogger('{step.action.__module__}')\n"
             )
@@ -385,7 +370,7 @@ def _run_in_notebook(
                 f'print("Loaded step {order} as {step.action_ref}")\n'
                 f'print("Loaded lookup {order} as {step.lookup_ref}")\n'
                 f"for arg_name, var_name in {lookup_params}.items():\n"
-                f"    val = mitosis._resolve_param(arg_name, var_name, lookup_{order}).vals\n"  # noqa E501
+                f"    val = mitosis._lookup_param(arg_name, var_name, lookup_{order}).vals\n"  # noqa E501
                 f"    resolved_args_{order}.update({{arg_name: val}}) \n"
                 f"    print(arg_name,'=',resolved_args_{order}[arg_name])\n\n"
                 f"for arg_name, var_name in {eval_params}.items():\n"
@@ -399,19 +384,20 @@ def _run_in_notebook(
         step_loader_cells.append(nbformat.v4.new_code_cell(source=code))
 
         code = (
-            f"if in is not None:\n"
-            f"    results = step_{order}(in, **resolved_args_{order})\n"
+            f"if inputs is not None:\n"
+            f"    curr_result = step_{order}(inputs, **resolved_args_{order})\n"
             f"else:\n"
-            f"    results = step_{order}(**resolved_args_{order})\n"
+            f"    curr_result = step_{order}(**resolved_args_{order})\n"
             f"with open(r'{trials_folder / (f'results_{order}.dill')}', 'wb') as f:\n"  # noqa E501
-            f"    dill.dump(results, f)\n"
-            f"print(repr(results))\n"
-            f"in = results['data']"
+            f"    dill.dump(curr_result, f)\n"
+            f"print(repr(curr_result))\n"
+            f"inputs = curr_result.get('data', None)\n"
         )
         step_runner_cells.append(nbformat.v4.new_code_cell(source=code))
 
     nb["cells"] = [setup_cell] + step_loader_cells + step_runner_cells
-
+    with open(trials_folder / "source.py", "w") as fh:
+        fh.write("".join(cell["source"] for cell in nb.cells))
     kernel_name = _create_kernel()
     ep = ExecutePreprocessor(timeout=-1, kernel=kernel_name)
     exception = None

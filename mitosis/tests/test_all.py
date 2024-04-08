@@ -10,8 +10,13 @@ from mitosis import _disk
 from mitosis import unpack
 from mitosis.__main__ import _split_param_str
 from mitosis.__main__ import normalize_modinput
+from mitosis._typing import ExpStep
+from mitosis._typing import Parameter
 from mitosis.tests import bad_return_experiment
 from mitosis.tests import mock_legacy
+from mitosis.tests import mock_paper
+from mitosis.tests import mock_part1
+from mitosis.tests import mock_part2
 
 
 def test_reproduceable_dict():
@@ -106,20 +111,43 @@ def fake_lookup_param():
     return mitosis.Parameter("test", "foo", 2, evaluate=False)
 
 
-@pytest.mark.parametrize(
-    "param",
-    (
-        pytest.lazy_fixture("fake_eval_param"),  # type: ignore
-        pytest.lazy_fixture("fake_lookup_param"),  # type: ignore
-    ),
-)
-def test_empty_mod_experiment(tmp_path, param):
-    mitosis.run(
-        mock_legacy,
+@pytest.fixture()
+def mock_steps():
+    return [
+        # fmt: off
+        ExpStep(
+            "foo",
+            mock_part1.Klass.gen_data, "mitosis.tests.mock_part1:Klass.gen_data",
+            mock_paper.data_config, "mitosis.tests.mock_paper:data_config",
+            None,
+            [
+                Parameter("test", "length", 5, evaluate=False),
+                Parameter("True", "extra", True, evaluate=True),
+            ],
+            []
+        ),
+        ExpStep(
+            "bar",
+            mock_part2.fit_and_score, "mitosis.tests.mock_part2:fit_and_score",
+            mock_paper.meth_config, "mitosis.tests.mock_paper:meth_config",
+            None,
+            [
+                Parameter("test", "metric", "len", evaluate=False),
+            ],
+            []
+        )
+        # fmt: on
+    ]
+
+
+def test_mock_experiment(mock_steps, tmp_path):
+    exp_key = mitosis.run(
+        mock_steps,
         debug=True,
         trials_folder=tmp_path,
-        params=[param],
     )
+    data = mitosis.load_trial_data(exp_key, trials_folder=tmp_path)
+    assert len(data[1]["data"]) == 5
 
 
 def test_empty_mod_logging_debug(tmp_path):
@@ -129,7 +157,7 @@ def test_empty_mod_logging_debug(tmp_path):
         trials_folder=tmp_path,
         params=[],
     )
-    trial_folder = mitosis._locate_trial_folder(hexstr, trials_folder=tmp_path)
+    trial_folder = _disk._locate_trial_folder(hexstr, trials_folder=tmp_path)
     with open(trial_folder / f"{mock_legacy.__name__}.log") as f:
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
@@ -144,7 +172,7 @@ def test_empty_mod_logging(tmp_path):
         trials_folder=tmp_path,
         params=[],
     )
-    trial_folder = mitosis._locate_trial_folder(hexstr, trials_folder=tmp_path)
+    trial_folder = _disk._locate_trial_folder(hexstr, trials_folder=tmp_path)
     with open(trial_folder / f"{mock_legacy.__name__}.log") as f:
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
