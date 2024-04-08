@@ -4,6 +4,8 @@ import pytest
 
 from mitosis.__main__ import _create_parser
 from mitosis.__main__ import _process_cl_args
+from mitosis.__main__ import _split_param_str
+from mitosis.__main__ import normalize_modinput
 from mitosis.tests.mock_legacy import lookup_dict
 from mitosis.tests.mock_legacy import run
 from mitosis.tests.mock_paper import meth_config
@@ -77,3 +79,30 @@ def test_argparse_main():
     assert args.folder is None
     assert len(args.eval_param) == 2
     assert len(args.param) == 3
+
+
+def test_split_param_str():
+    result = _split_param_str("+a=b")
+    assert result == ("", False, "a", "b")
+    result = _split_param_str("a.b=c")
+    assert result == ("a", True, "b", "c")
+
+
+def test_normalize_modinput():
+    modinput = "mitosis.tests.mock_experiment"
+    result = normalize_modinput(modinput)
+    assert result == {
+        "mitosis.tests.mock_experiment": (
+            "mitosis.tests.mock_experiment:run",
+            "mitosis.tests.mock_experiment:lookup_dict",
+        )
+    }
+    # if modinput is an object, connect to run and lookup_dict with . not :
+    modinput = "mitosis.tests.mock_experiment:MockExp.MockExpInner"
+    result = normalize_modinput(modinput)
+    assert result == {
+        "mitosis.tests.mock_experiment:MockExp.MockExpInner": (
+            "mitosis.tests.mock_experiment:MockExp.MockExpInner.run",
+            "mitosis.tests.mock_experiment:MockExp.MockExpInner.lookup_dict",
+        )
+    }

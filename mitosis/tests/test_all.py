@@ -8,11 +8,8 @@ import pytest
 import mitosis
 from mitosis import _disk
 from mitosis import unpack
-from mitosis.__main__ import _split_param_str
-from mitosis.__main__ import normalize_modinput
 from mitosis._typing import ExpStep
 from mitosis._typing import Parameter
-from mitosis.tests import bad_return_experiment
 from mitosis.tests import mock_legacy
 from mitosis.tests import mock_paper
 from mitosis.tests import mock_part1
@@ -150,27 +147,25 @@ def test_mock_experiment(mock_steps, tmp_path):
     assert len(data[1]["data"]) == 5
 
 
-def test_empty_mod_logging_debug(tmp_path):
+def test_empty_mod_logging_debug(mock_steps, tmp_path):
     hexstr = mitosis.run(
-        mock_legacy,
+        mock_steps,
         debug=True,
         trials_folder=tmp_path,
-        params=[],
     )
     trial_folder = _disk._locate_trial_folder(hexstr, trials_folder=tmp_path)
-    with open(trial_folder / f"{mock_legacy.__name__}.log") as f:
+    with open(trial_folder / "experiment.log", "r") as f:
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
     assert "This is run in debug mode only" in log_str
 
 
 @pytest.mark.clean
-def test_empty_mod_logging(tmp_path):
+def test_empty_mod_logging(mock_steps, tmp_path):
     hexstr = mitosis.run(
-        mock_legacy,
+        mock_steps,
         debug=False,
         trials_folder=tmp_path,
-        params=[],
     )
     trial_folder = _disk._locate_trial_folder(hexstr, trials_folder=tmp_path)
     with open(trial_folder / f"{mock_legacy.__name__}.log") as f:
@@ -179,20 +174,25 @@ def test_empty_mod_logging(tmp_path):
     assert "This is run in debug mode only" not in log_str
 
 
-def test_split_param_str():
-    result = _split_param_str("+a=b")
-    assert result == ("", False, "a", "b")
-    result = _split_param_str("a.b=c")
-    assert result == ("a", True, "b", "c")
-
-
-def test_malfored_return_experiment(tmp_path):
+def test_malfored_return_experiment(mock_steps, tmp_path):
+    bad_steps = [
+        mock_steps[0],
+        ExpStep(
+            mock_steps[1].name,
+            mock_part2.bad_runnable,  # type: ignore
+            "mitosis.tests.mock_part2:bad_runnable",
+            mock_steps[1].lookup,
+            mock_steps[1].lookup_ref,
+            mock_steps[1].group,
+            mock_steps[1].args,
+            mock_steps[1].untracked_args,
+        ),
+    ]
     with pytest.raises(nbclient.exceptions.CellExecutionError):
         mitosis.run(
-            bad_return_experiment,
+            bad_steps,
             debug=True,
             trials_folder=tmp_path,
-            params=[],
         )
 
 
@@ -229,23 +229,3 @@ def test_unpack():
     obj_ref = "importlib.metadata:version"
     result = unpack(obj_ref)
     assert result is version
-
-
-def test_normalize_modinput():
-    modinput = "mitosis.tests.mock_experiment"
-    result = normalize_modinput(modinput)
-    assert result == {
-        "mitosis.tests.mock_experiment": (
-            "mitosis.tests.mock_experiment:run",
-            "mitosis.tests.mock_experiment:lookup_dict",
-        )
-    }
-    # if modinput is an object, connect to run and lookup_dict with . not :
-    modinput = "mitosis.tests.mock_experiment:MockExp.MockExpInner"
-    result = normalize_modinput(modinput)
-    assert result == {
-        "mitosis.tests.mock_experiment:MockExp.MockExpInner": (
-            "mitosis.tests.mock_experiment:MockExp.MockExpInner.run",
-            "mitosis.tests.mock_experiment:MockExp.MockExpInner.lookup_dict",
-        )
-    }

@@ -1,3 +1,4 @@
+from typing import Any
 from typing import Literal
 
 import numpy as np
@@ -12,3 +13,7 @@ def fit_and_score(
         return {"main": len(data)}
     elif metric == "zero":
         return {"main": 0}
+
+
+def bad_runnable(*args: Any, **kwargs: Any):
+    return 1  # not a dict with key "main"
