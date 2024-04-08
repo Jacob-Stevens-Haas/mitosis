@@ -49,15 +49,31 @@ def test_experiment_arg():
     assert id(result["steps"][1].lookup) == id(meth_config)
 
 
-@pytest.mark.skip
-def test_argparse_types():
+def test_argparse_options():
     parser = _create_parser()
-    args = parser.parse_args("stuff")
-    expected = None
-    assert args
-    assert expected is None
+    args = parser.parse_args(
+        ["-m", "mod", "-d", "--config", "foo.toml", "-F", "foo/bar"]
+    )
+    assert args.experiment == []
+    assert args.module == "mod"
+    assert args.debug is True
+    assert args.config == "foo.toml"
+    assert args.folder == "foo/bar"
+    assert args.eval_param == []
+    assert args.param == []
 
 
-@pytest.mark.skip
-def test_argparse_defaults():
-    pass
+def test_argparse_main():
+    parser = _create_parser()
+    args = parser.parse_args(
+        [
+            "step1", "step2", "-e", "a=1", "-e", "b=2", "-p", "c=d", "-p", "e=f", "-p", "g=h"  # fmt: skip; # noqa: E501
+        ]
+    )
+    assert args.experiment == ["step1", "step2"]
+    assert args.module is None
+    assert args.debug is False
+    assert args.config == "pyproject.toml"
+    assert args.folder is None
+    assert len(args.eval_param) == 2
+    assert len(args.param) == 3

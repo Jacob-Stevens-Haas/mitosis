@@ -54,6 +54,7 @@ def _create_parser() -> argparse.ArgumentParser:
         "--eval-param",
         "-e",
         type=str,
+        default=[],
         action="append",
         help=(
             "Parameters directly passed on command line.  Make sure to quote if you"
@@ -64,6 +65,7 @@ def _create_parser() -> argparse.ArgumentParser:
         "--param",
         "-p",
         action="append",
+        default=[],
         help=(
             "Name of parameters to use with this trial, in format 'key=value'\ne.g."
             "--param solver=solver_1\nKeys must be understood by the experiment"
