@@ -44,7 +44,8 @@ dependencies = [
   "nbformat",
   "pandas",
   "sqlalchemy",
-  "toml"
+  "toml",
+  "types-toml",
 ]
 
 [project.optional-dependencies]

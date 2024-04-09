@@ -26,7 +26,6 @@ from typing import Optional
 from typing import Sequence
 
 import dill  # type: ignore
-import nbclient.exceptions
 import nbformat
 import pandas as pd
 import sqlalchemy as sql
@@ -55,7 +54,7 @@ from mitosis._disk import _locate_trial_folder
 
 def trials_columns():
     return [
-        Column("variant", Integer, primary_key=True),
+        Column("variant", String, primary_key=True),
         Column("iteration", Integer, primary_key=True),
         Column("commit", String, nullable=False),
         Column("cpu_time", Float),
@@ -534,7 +533,7 @@ def _log_start_experiment(
     commit: str,
     debug: bool,
 ) -> float:
-    exp_logger.info(f"trial entry: insert--{variant}----{iteration}--{commit}------")
+    exp_logger.info(f"trial entry: insert--{variant}--{iteration}--{commit}--------")
     utc_now = datetime.now(timezone.utc)
     cpu_now = process_time()
     log_msg = (

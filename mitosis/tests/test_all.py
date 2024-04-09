@@ -10,7 +10,6 @@ from mitosis import _disk
 from mitosis import unpack
 from mitosis._typing import ExpStep
 from mitosis._typing import Parameter
-from mitosis.tests import mock_legacy
 from mitosis.tests import mock_paper
 from mitosis.tests import mock_part1
 from mitosis.tests import mock_part2
@@ -143,7 +142,7 @@ def test_mock_experiment(mock_steps, tmp_path):
     assert len(data[1]["data"]) == 5
 
 
-def test_empty_mod_logging_debug(mock_steps, tmp_path):
+def test_mod_logging_debug(mock_steps, tmp_path):
     hexstr = mitosis.run(
         mock_steps,
         debug=True,
@@ -157,14 +156,14 @@ def test_empty_mod_logging_debug(mock_steps, tmp_path):
 
 
 @pytest.mark.clean
-def test_empty_mod_logging(mock_steps, tmp_path):
+def test_mod_logging(mock_steps, tmp_path):
     hexstr = mitosis.run(
         mock_steps,
         debug=False,
         trials_folder=tmp_path,
     )
     trial_folder = _disk._locate_trial_folder(hexstr, trials_folder=tmp_path)
-    with open(trial_folder / f"{mock_legacy.__name__}.log") as f:
+    with open(trial_folder / "experiment.log", "r") as f:
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
     assert "This is run in debug mode only" not in log_str
