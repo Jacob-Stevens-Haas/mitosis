@@ -17,6 +17,7 @@ from types import BuiltinMethodType
 from types import FunctionType
 from types import MethodType
 from typing import Any
+from typing import cast
 from typing import Collection
 from typing import Hashable
 from typing import List
@@ -29,6 +30,7 @@ import nbclient.exceptions
 import nbformat
 import pandas as pd
 import sqlalchemy as sql
+from nbclient.exceptions import CellExecutionError
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers.files import FilesWriter
@@ -398,26 +400,20 @@ def _run_in_notebook(
     nb["cells"] = [setup_cell] + step_loader_cells + step_runner_cells
     with open(trials_folder / "source.py", "w") as fh:
         fh.write("".join(cell["source"] for cell in nb.cells))
-    kernel_name = _create_kernel()
-    ep = ExecutePreprocessor(timeout=-1, kernel=kernel_name)
+    ep = ExecutePreprocessor(timeout=-1)
+
     exception = None
     metrics = None
+    if debug:
+        allowed = cast(tuple[type[Exception], ...], ())
+    else:
+        allowed = (CellExecutionError,)
     try:
         ep.preprocess(nb, {"metadata": {"path": trials_folder}})
         metrics = nb["cells"][-1]["outputs"][0]["text"][:-1]
-    except nbclient.exceptions.CellExecutionError as exc:
+    except allowed as exc:
         exception = exc
     return nb, metrics, exception
-
-
-def _create_kernel():
-    from ipykernel import kernelapp as app
-
-    kernel_name = "".join(choices(list("0123456789"), k=6)) + str(
-        hash(Path(sys.executable))
-    )
-    app.launch_new_instance(argv=["install", "--user", "--name", kernel_name])
-    return kernel_name
 
 
 def _save_notebook(nb, filename, trials_folder, extension):
