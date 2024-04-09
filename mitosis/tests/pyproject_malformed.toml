@@ -1,0 +1,2 @@
+[tool.mitosis.steps]
+data = ["data.library:gen_data"]

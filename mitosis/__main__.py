@@ -1,15 +1,15 @@
 import argparse
-from importlib import import_module
+from itertools import groupby
 from pathlib import Path
 from typing import Any
-from typing import cast
-from typing import Optional
+from typing import NamedTuple
 
-from . import _resolve_param
-from . import _split_param_str
-from . import Experiment
-from . import Parameter
+from . import _disk
 from . import run
+from . import unpack
+from ._typing import ExpRun
+from ._typing import ExpStep
+from ._typing import Parameter
 
 
 def _create_parser() -> argparse.ArgumentParser:
@@ -17,7 +17,17 @@ def _create_parser() -> argparse.ArgumentParser:
         prog="mitosis",
         description=("Orchestrate experiment to ensure reproducibility."),
     )
-    parser.add_argument("experiment", help="Name to identify the experiment")
+    parser.add_argument(
+        "experiment",
+        nargs="*",
+        help="Name to identify the experiment step(s), specified in pyproject.toml",
+    )
+    parser.add_argument(
+        "-m",
+        "--module",
+        nargs="?",
+        help="Load complete experiment from a module",
+    )
     parser.add_argument(
         "--debug",
         "-d",
@@ -28,12 +38,10 @@ def _create_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--group",
-        "-g",
+        "--config",
         type=str,
-        default=None,
-        help="Group of experiment.  This tells mitosis to store all results for a group"
-        " separately.",
+        default="pyproject.toml",
+        help="Name or path of config file",
     )
     parser.add_argument(
         "--folder",
@@ -46,13 +54,18 @@ def _create_parser() -> argparse.ArgumentParser:
         "--eval-param",
         "-e",
         type=str,
+        default=[],
         action="append",
-        help="Parameters directly passed on command line",
+        help=(
+            "Parameters directly passed on command line.  Make sure to quote if you"
+            " want argument to evaluate as a string"
+        ),
     )
     parser.add_argument(
         "--param",
         "-p",
         action="append",
+        default=[],
         help=(
             "Name of parameters to use with this trial, in format 'key=value'\ne.g."
             "--param solver=solver_1\nKeys must be understood by the experiment"
@@ -64,51 +77,107 @@ def _create_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _normalize_params(
-    ep_strs: Optional[list[str]],
-    lp_strs: Optional[list[str]],
-    lookup_dict: dict[str, Any],
-) -> tuple[list[Parameter], list[str]]:
-    params = []
+class CLIParam(NamedTuple):
+    step_key: str
+    track: bool
+    arg_name: str
+    var_name: str
 
-    untracked_args: list[str] = []
 
-    for param in lp_strs if lp_strs else ():
-        track, arg_name, var_name = _split_param_str(param)
-        if not track:
-            untracked_args.append(arg_name)
-        params += [_resolve_param(arg_name, var_name, lookup_dict)]
-
-    for ep in ep_strs if ep_strs else ():
-        track, arg_name, var_name = _split_param_str(ep)
-        if not track:
-            untracked_args.append(arg_name)
-        params.append(Parameter(var_name, arg_name, var_name, evaluate=True))
-
-    return params, untracked_args
+def _split_param_str(paramstr: str) -> CLIParam:
+    arg_name, var_name = paramstr.split("=")
+    track = True
+    if arg_name[0] == "+":
+        track = False
+        arg_name = arg_name[1:]
+    ex_step, _, arg_name = arg_name.rpartition(".")
+    return CLIParam(ex_step, track, arg_name, var_name)
 
 
 def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
-    ex = cast(Experiment, import_module(args.experiment))
+    ep_tups = [_split_param_str(epstr) for epstr in args.eval_param]
+    lp_tups = [_split_param_str(lpstr) for lpstr in args.param]
 
-    params, untracked_args = _normalize_params(
-        args.eval_param, args.param, ex.lookup_dict
-    )
+    if args.experiment:
+        if args.module:
+            raise RuntimeError("Cannot use -m option if also passing experiment steps.")
+        proj_steps = _disk.load_mitosis_steps(args.config)
+        steps = dict(filter(lambda k: k[0] in args.experiment, proj_steps.items()))
+    elif args.module:
+        mod: str = args.module
+        steps = normalize_modinput(args.module)
+        ep_tups = [CLIParam(mod, track, name, val) for _, track, name, val in ep_tups]
+        lp_tups = [CLIParam(mod, track, name, val) for _, track, name, val in lp_tups]
+    else:
+        raise RuntimeError(
+            "Must set either pass a list of experiment steps "
+            "(defined in pyproject.toml) or use the -m flag to pass a single"
+            "installed experiment module"
+        )
+    all_steps: dict[str, tuple[tuple[str, ExpRun], tuple[str, dict[str, Any]]]] = {
+        k: ((runner, unpack(runner)), (lookup, unpack(lookup)))
+        for k, (runner, lookup) in steps.items()
+    }
+
+    def group_and_pop(
+        list_of_clargs: list[CLIParam],
+    ) -> dict[str, list[tuple[bool, str, str]]]:
+        new_list = sorted(list_of_clargs, key=lambda tup: tup.step_key)
+        arg_groups = {
+            k: list(v) for k, v in groupby(new_list, key=lambda tup: tup.step_key)
+        }
+        popped = {k: [tup[1:] for tup in l] for k, l in arg_groups.items()}
+        return popped
+
+    ep_dict = group_and_pop(ep_tups)
+    lp_dict = group_and_pop(lp_tups)
+
+    unassigned = set(ep_dict.keys()).union(lp_dict.keys()) - set(all_steps.keys())
+    if unassigned:
+        raise RuntimeError(
+            f"Steps {unassigned} not in experiment, but arguments assigned to them"
+        )
+
+    def create_step(
+        name: str,
+        part_step: tuple[tuple[str, ExpRun], tuple[str, dict[str, Any]]],
+        eps: list[tuple[bool, str, str]],
+        lps: list[tuple[bool, str, str]],
+    ) -> ExpStep:
+        (run_ref, runnable), (lookup_ref, lookup) = part_step
+        params = []
+        untracked_args = []
+        for track, arg_name, var_name in eps:
+            params.append(Parameter(var_name, arg_name, var_name, evaluate=True))
+            if not track:
+                untracked_args.append(arg_name)
+        for track, arg_name, var_name in lps:
+            params.append(Parameter(var_name, arg_name, lookup[arg_name][var_name]))
+            if not track:
+                untracked_args.append(arg_name)
+        return ExpStep(
+            name, runnable, run_ref, lookup, lookup_ref, None, params, untracked_args
+        )
+
+    # groups[step] could be empty...
+    exp_steps = [
+        create_step(
+            step_name,
+            all_steps[step_name],
+            ep_dict.get(step_name, []),
+            lp_dict.get(step_name, []),
+        )
+        for step_name in all_steps.keys()
+    ]
 
     if args.folder is None:
-        trials_folder = Path(".").resolve()
+        folder = Path(_disk.get_repo().working_dir) / "trials"
     else:
-        trials_folder = Path(str(ex.__file__)).parent / args.folder
-    if not trials_folder.exists():
-        trials_folder.mkdir(parents=True)
+        folder = Path(args.folder)
     return {
-        "ex": ex,
+        "steps": exp_steps,
         "debug": args.debug,
-        "group": args.group,
-        "logfile": f"trials_{args.experiment}.db",
-        "params": params,
-        "trials_folder": trials_folder,
-        "untracked_params": untracked_args,
+        "trials_folder": folder,
     }
 
 
@@ -121,3 +190,12 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def normalize_modinput(obj_ref: str) -> dict[str, tuple[str, str]]:
+    modname, _, qualname = obj_ref.partition(":")
+    if qualname:
+        sep = ":" + qualname + "."
+    else:
+        sep = ":"
+    return {obj_ref: (modname + sep + "run", modname + sep + "lookup_dict")}

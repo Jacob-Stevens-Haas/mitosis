@@ -1,22 +1,21 @@
 import logging
 import pprint
 import sys
-import warnings
-from abc import ABCMeta
 from collections import OrderedDict
-from dataclasses import dataclass
-from dataclasses import field
 from datetime import datetime
 from datetime import timezone
+from glob import glob
+from importlib import import_module
 from importlib.metadata import packages_distributions
 from importlib.metadata import version
+from logging import Logger
 from pathlib import Path
+from random import choices
 from time import process_time
 from types import BuiltinFunctionType
 from types import BuiltinMethodType
 from types import FunctionType
 from types import MethodType
-from types import ModuleType
 from typing import Any
 from typing import cast
 from typing import Collection
@@ -24,11 +23,9 @@ from typing import Hashable
 from typing import List
 from typing import Mapping
 from typing import Optional
-from typing import Protocol
 from typing import Sequence
 
 import dill  # type: ignore
-import git
 import nbformat
 import pandas as pd
 import sqlalchemy as sql
@@ -36,8 +33,7 @@ from nbclient.exceptions import CellExecutionError
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers.files import FilesWriter
-from numpy import array  # noqa: F401 used in an eval() for result string
-from numpy.random import choice
+from nbformat import NotebookNode
 from sqlalchemy import Column
 from sqlalchemy import create_engine
 from sqlalchemy import Float
@@ -50,23 +46,15 @@ from sqlalchemy import String
 from sqlalchemy import Table
 from sqlalchemy import update
 
-
-class _ExpRun(Protocol):
-    def __call__(self, *args: Any) -> dict:
-        ...
-
-
-class Experiment(ModuleType, metaclass=ABCMeta):
-    __name__: str
-    __file__: str
-    name: str
-    lookup_dict: dict[str, dict[str, Any]]
-    run: _ExpRun
+from . import _disk
+from ._typing import ExpStep
+from ._typing import Parameter
+from mitosis._disk import _locate_trial_folder
 
 
 def trials_columns():
     return [
-        Column("variant", Integer, primary_key=True),
+        Column("variant", String, primary_key=True),
         Column("iteration", Integer, primary_key=True),
         Column("commit", String, nullable=False),
         Column("cpu_time", Float),
@@ -82,59 +70,17 @@ def variant_types():
     ]
 
 
-@dataclass
-class Parameter:
-    """An experimental parameter
-
-    Arguments:
-        var_name: short name for the variant (particular values) across use cases
-        arg_name: name of arg known to experiment
-        vals: value of the parameter
-        eval: whether variant name should be evaluated or looked up.
-    """
-
-    var_name: str
-    arg_name: str
-    vals: Any
-    # > 3.10 only: https://stackoverflow.com/a/49911616/534674
-    evaluate: bool = field(default=False, kw_only=True)
-
-
 def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
     trial = _locate_trial_folder(hexstr, trials_folder=trials_folder)
-    with open(trial / "results.dill", "rb") as fh:
-        return dill.load(fh)
+    all_files = glob("results*.dill", root_dir=trial)
+    results = []
+    for file in all_files:
+        with open(trial / file, "rb") as fh:
+            results.append(dill.load(fh))
+    return results
 
 
-def _locate_trial_folder(
-    hexstr: str, *, trials_folder: Optional[Path | str] = None
-) -> Path:
-    if trials_folder is None:
-        trials_folder = Path().absolute()
-    else:
-        trials_folder = Path(trials_folder).resolve()
-    matches = trials_folder.glob(f"*{hexstr}")
-    try:
-        first = next(matches)
-    except StopIteration:
-        raise FileNotFoundError(f"Could not find a trial that matched {hexstr}")
-    try:
-        next(matches)
-    except StopIteration:
-        return first
-    raise RuntimeError(f"Two or more matches found for {hexstr}")
-
-
-def _split_param_str(paramstr: str) -> tuple[bool, str, str]:
-    arg_name, var_name = paramstr.split("=")
-    track = True
-    if arg_name[0] == "+":
-        track = False
-        arg_name = arg_name[1:]
-    return track, arg_name, var_name
-
-
-def _resolve_param(
+def _lookup_param(
     arg_name: str, var_name: str, lookup_dict: dict[str, Any]
 ) -> Parameter:
     stored = lookup_dict[arg_name][var_name]
@@ -147,7 +93,7 @@ def _resolve_param(
 class DBHandler(logging.Handler):
     def __init__(
         self,
-        filename: str,
+        filename: Path | str,
         table_name: str,
         cols: List[Column],
         separator: str = "--",
@@ -194,7 +140,7 @@ class DBHandler(logging.Handler):
         return msg.split(self.separator)
 
 
-def _init_logger(trial_log, table_name, debug):
+def _init_logger(trial_log: Path, table_name: str, debug: bool) -> tuple[Logger, Table]:
     """Create a Trials logger with a database handler"""
     exp_logger = logging.Logger("experiments")
     exp_logger.setLevel(20)
@@ -205,17 +151,17 @@ def _init_logger(trial_log, table_name, debug):
     return exp_logger, db_h.log_table
 
 
-def _init_variant_table(trial_log, param: Parameter):
-    eng = create_engine("sqlite:///" + str(trial_log))
+def _init_variant_table(trial_db: Path, step: str, param: Parameter) -> Table:
+    eng = create_engine("sqlite:///" + str(trial_db))
     md = MetaData()
-    var_table = Table(f"variant_{param.arg_name}", md, *variant_types())
+    var_table = Table(f"{step}_variant_{param.arg_name}", md, *variant_types())
     inspector = inspection.inspect(eng)
-    if not inspector.has_table(f"variant_{param.arg_name}"):
+    if not inspector.has_table(f"{step}_variant_{param.arg_name}"):
         md.create_all(eng)
     return var_table
 
 
-def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
+def _verify_variant_name(trial_db: Path, step: str, param: Parameter) -> None:
     """Check for conflicts between variant names in prior trials
 
     Side effects:
@@ -224,7 +170,7 @@ def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
     """
     eng = create_engine("sqlite:///" + str(trial_db))
     md = MetaData()
-    tb = Table(f"variant_{param.arg_name}", md, *variant_types())
+    tb = Table(f"{step}_variant_{param.arg_name}", md, *variant_types())
     vals: Collection[Any]
     if isinstance(param.vals, Mapping):
         vals = StrictlyReproduceableDict({k: v for k, v in sorted(param.vals.items())})
@@ -250,7 +196,9 @@ def _verify_variant_name(trial_db: Path, param: Parameter) -> None:
     # Otherwise, parameter has already been registered and no conflicts
 
 
-def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
+def _id_variant_iteration(
+    trial_db: Path, trials_table: Table, master_variant: str
+) -> int:
     """Identify the iteration for this exact variant of the trial
 
     Args:
@@ -265,7 +213,7 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
         prob_params (dict): Parameters used to create the problem/solver
             in the experiment
     """
-    eng = create_engine("sqlite:///" + str(trial_log))
+    eng = create_engine("sqlite:///" + str(trial_db))
     stmt = select(trials_table).where(trials_table.c.variant == master_variant)
     df = pd.read_sql(stmt, eng)
     if df.empty:
@@ -274,226 +222,185 @@ def _id_variant_iteration(trial_log, trials_table, master_variant: str) -> int:
         return df["iteration"].max() + 1
 
 
-def _identify_cwd_commit_hash() -> str:
-    repo = git.Repo(Path.cwd(), search_parent_directories=True)
-    if repo.is_dirty():
-        raise RuntimeError(
-            "Git Repo is dirty.  For repeatable tests,"
-            " clean the repo by committing or stashing all changes and "
-            "untracked files."
-        )
-    return repo.head.commit.hexsha
-
-
 def _lock_in_variant(
+    step: str,
     params: Sequence[Parameter],
     untracked_params: Collection[str],
     trial_db: Path,
     debug: bool,
 ) -> str:
+    """Calculate the unique variant name combining all variants of parameters"""
     for param in params:
         if debug or param.arg_name in untracked_params:
             continue
-        _init_variant_table(trial_db, param)
-        _verify_variant_name(trial_db, param)
+        _init_variant_table(trial_db, step, param)
+        _verify_variant_name(trial_db, step, param)
     var_names = [param.var_name for param in params]
     arg_names = [param.arg_name for param in params]
     if not arg_names:
         return "noparams"
-    return "-".join(
+    return f"{step}-" + "-".join(
         [x for _, x in sorted(zip(arg_names, var_names), key=lambda pair: pair[0])]
     )
 
 
+def _get_commit_and_project_root(debug: bool) -> tuple[str, Path]:
+    repo = _disk.get_repo()
+    commit = "0000000" if debug else repo.head.commit.hexsha
+    if not debug and repo.is_dirty():
+        raise RuntimeError(
+            "Git Repo is dirty.  For repeatable tests,"
+            " clean the repo by committing or stashing all changes and "
+            "untracked files."
+        )
+    return commit, Path(repo.working_dir)
+
+
 def run(
-    ex: Experiment,
+    steps: list[ExpStep],
     debug: bool = False,
     *,
-    group: str | None = None,
-    logfile: Path | str = "trials.db",
-    params: Sequence[Parameter] = (),
-    trials_folder: Path | str = Path(__file__).absolute().parent / "trials",
+    trials_folder: Path,
     output_extension: str = "html",
-    untracked_params: Collection[str] = (),
     matplotlib_dpi: int = 72,
 ) -> str:
     """Run the selected experiment.
 
     Arguments:
-        ex: The experiment class to run
+        exps: The experiment steps to run
         debug (bool): Whether to run in debugging mode or not.
-        group (str): Trial grouping.  Name a group if desiring to
-            segregate trials using the same experiment code.  ex.run()
-            must take a "group" argument.
-        logfile (str): the database log for trial results
-        params: The assigned parameter dictionaries to generate and
-            solve the problem.
-        trials_folder (path-like): The folder to store both output and
-            logfile.
+        trials_folder: The folder to store output, database, log, and metadata.
         output_extension: what output type to produce using nbconvert.
-        untracked_params: names of parameters to not track in database
-        matplotlib_resolution: dpi for matplotlib images.  Not yet
+            Either 'html' or 'ipynb'.
+        matplotlib_dpi: dpi for matplotlib images.  Not yet
             functional.
 
     Returns:
         The pseudorandom key to this experiment
     """
 
-    if debug:
-        commit = "0000000"
-    else:
-        commit = _identify_cwd_commit_hash()
-
+    commit, _ = _get_commit_and_project_root(debug)
     trials_folder = Path(trials_folder).absolute()
-    trial_db = trials_folder / logfile
-    master_variant = _lock_in_variant(params, untracked_params, trial_db, debug)
-
-    table_name = f"trials_{ex.name}"
-    params = list(params)
-    if group is not None:
-        table_name += f" {group}"
-        params.append(Parameter(f"'{group}'", "group", group, evaluate=True))
-    exp_logger, trials_table = _init_logger(trial_db, table_name, debug)
+    if not trials_folder.exists():
+        trials_folder.mkdir(parents=True)
+    exp_name = "_".join(
+        step.name + (f"_{step.group}" if step.group else "") for step in steps
+    )
+    dbfile = exp_name + ".db"
+    trial_db = trials_folder / dbfile
+    master_variant = "+".join(
+        _lock_in_variant(step.name, step.args, step.untracked_args, trial_db, debug)
+        for step in steps
+    )
+    experiments_table = f"trials_{exp_name}"
+    for step in steps:
+        if step.group is not None:
+            step.args.append(
+                Parameter(f"'{step.group}'", "group", step.group, evaluate=True)
+            )
+    exp_logger, trials_table = _init_logger(trial_db, experiments_table, debug)
     iteration = (
         0 if debug else _id_variant_iteration(trial_db, trials_table, master_variant)
     )
-    new_filename = f"trial_{ex.name}"
-    if group is not None:
-        new_filename += f"_{group}"
-    rand_key = "".join(choice(list("0123456789abcde"), 6))
-    new_filename += f"_{master_variant}_{iteration}_{rand_key}"
-    if debug:
-        new_filename += "debug"
-    if output_extension is None:
-        new_filename = None
-    elif output_extension == "html":
-        new_filename += ".html"
-    elif output_extension == "ipynb":
-        new_filename += ".ipynb"
-    exp_logger.info(
-        "trial entry: insert"
-        + f"--{master_variant}"
-        + f"--{iteration}"
-        + f"--{commit}"
-        + "--"
-        + "--"
-        + "--"
-    )
-    utc_now = datetime.now(timezone.utc)
-    cpu_now = process_time()
-    log_msg = (
-        f"Running experiment {ex.name}, simulation variant {master_variant}, "
-        f"iteration {iteration} at time: "
-        + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
-        + f".  Current repo hash: {commit}"
-    )
-    if debug:
-        log_msg += ".  In debugging mode."
-    exp_logger.info(log_msg)
+    rand_key = "".join(choices(list("0123456789abcde"), k=6))
 
-    exp_metadata_name = (
-        datetime.now().astimezone().strftime(r"%Y-%m-%d") + f"_{rand_key}"
+    out_filename = _create_filename(
+        master_variant, debug, iteration, rand_key, output_extension
     )
-    exp_metadata_folder = trials_folder / exp_metadata_name
-    exp_metadata_folder.mkdir()
+    exp_metadata_folder = _make_metadata_folder(trials_folder, rand_key)
     _write_freezefile(exp_metadata_folder)
 
-    nb, metrics, exc = _run_in_notebook(
-        ex,
-        {p.arg_name: p.var_name for p in params if not p.evaluate},
-        {p.arg_name: p.var_name for p in params if p.evaluate},
+    start_time = _log_start_experiment(
+        exp_logger, master_variant, iteration, commit, debug
+    )
+    nb, metric, exc = _run_in_notebook(
+        steps,
         exp_metadata_folder,
         matplotlib_dpi,
         debug=debug,
     )
-
-    utc_now = datetime.now(timezone.utc)
-    exp_logger.info(
-        "Finished experiment at time: "
-        + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
-        + f".  Results: {metrics}"
+    _save_notebook(nb, out_filename, trials_folder, output_extension)
+    (exp_metadata_folder / "experiment").symlink_to(trials_folder / out_filename)
+    _log_finish_experiment(
+        exp_logger, master_variant, iteration, commit, metric, out_filename, start_time
     )
-    cpu_time = process_time() - cpu_now
 
-    if new_filename is not None:
-        _save_notebook(nb, new_filename, trials_folder, output_extension)
-        (exp_metadata_folder / "experiment").symlink_to(trials_folder / new_filename)
-    else:
-        warnings.warn("Logging trial and mock filename, but no file created")
-
-    exp_logger.info(
-        "trial entry: update"
-        + f"--{master_variant}"
-        + f"--{iteration}"
-        + f"--{commit}"
-        + f"--{cpu_time}"
-        + f"--{metrics}"
-        + f"--{new_filename}"
-    )
     if exc is not None:
         raise exc
     return rand_key
 
 
 def _run_in_notebook(
-    ex: Experiment,
-    lookup_params: dict[str, str],
-    eval_params: dict[str, str],
-    trials_folder,
+    steps: list[ExpStep],
+    trials_folder: Path,
     matplotlib_dpi=72,
     debug: bool = False,
 ) -> tuple[nbformat.NotebookNode, Optional[str], Optional[Exception]]:
-    ex_module = ex.__name__
-    ex_file = ex.__file__
     code = (
-        "import importlib\n"
         "import logging\n"
+        "from pathlib import Path\n\n"
         "import matplotlib as mpl\n"
         "import dill\n"
-        "import sys\n\n"
-        f"ex = importlib.import_module('{ex_module}', '{ex_file}')\n\n"
+        "import mitosis\n\n"
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
-        f"logger = logging.getLogger('{ex_module}')\n"
-        'print(f"Running {ex.name}.run()")\n'
+        "inputs = None\n"
     )
-    code += (
-        "logger.setLevel(logging.DEBUG)\n"
-        if debug
-        else "logger.setLevel(logging.INFO)\n"
-    )
-    logfile = trials_folder / f"{ex_module}.log"
-    code += f"logger.addHandler(logging.FileHandler('{logfile}', delay=True))\n"
-
     nb = nbformat.v4.new_notebook()
     setup_cell = nbformat.v4.new_code_cell(source=code)
-    resolve_code = (
-        "import mitosis\n"
-        "from pathlib import Path\n"
-        "resolved_args = {}\n"
-        f"for arg_name, var_name in {lookup_params}.items():\n"
-        "    val = mitosis._resolve_param(arg_name, var_name, ex.lookup_dict).vals\n"
-        "    resolved_args.update({arg_name: val}) \n"
-        "    print(arg_name,'=',resolved_args[arg_name])\n\n"
-        f"for arg_name, var_name in {eval_params}.items():\n"
-        "    val = eval(var_name)\n"
-        "    resolved_args.update({arg_name: val}) \n"
-        "    print(arg_name,'=',resolved_args[arg_name])\n\n"
-        f"mitosis._prettyprint_config(Path('{trials_folder}'), resolved_args)\n"
-        f"print('Saving metadata to {trials_folder}')\n"
-    )
-    resolve_cell = nbformat.v4.new_code_cell(source=resolve_code)
-    run_cell = nbformat.v4.new_code_cell(source="results = ex.run(**resolved_args)")
-    result_cell = nbformat.v4.new_code_cell(
-        source=""
-        f"with open(r'{trials_folder / ('results.dill')}', 'wb') as f:\n"  # noqa E501
-        "  dill.dump(results, f)\n"
-        "print(repr(results))\n"
-    )
-    metrics_cell = nbformat.v4.new_code_cell(source="print(results['main'])")
-    nb["cells"] = [setup_cell, resolve_cell, run_cell, result_cell, metrics_cell]
+    step_loader_cells: list[NotebookNode] = []
+    step_runner_cells: list[NotebookNode] = []
+    for order, step in enumerate(steps):
+        lookup_params = {a.arg_name: a.var_name for a in step.args if not a.evaluate}
+        eval_params = {a.arg_name: a.var_name for a in step.args if a.evaluate}
 
+        code = (
+            (
+                f"step_{order} = mitosis.unpack('{step.action_ref}')\n"
+                f"lookup_{order} = mitosis.unpack('{step.lookup_ref}')\n"
+                f"resolved_args_{order} = {{}}\n"
+                f"logger = logging.getLogger('{step.action.__module__}')\n"
+            )
+            + (
+                "logger.setLevel(logging.DEBUG)\n"
+                if debug
+                else "logger.setLevel(logging.INFO)\n"
+            )
+            + (
+                f"logger.addHandler(logging.FileHandler('experiment.log', delay=True))\n"  # noqa E501
+                f'print("Loaded step {order} as {step.action_ref}")\n'
+                f'print("Loaded lookup {order} as {step.lookup_ref}")\n'
+                f"for arg_name, var_name in {lookup_params}.items():\n"
+                f"    val = mitosis._lookup_param(arg_name, var_name, lookup_{order}).vals\n"  # noqa E501
+                f"    resolved_args_{order}.update({{arg_name: val}}) \n"
+                f"    print(arg_name,'=',resolved_args_{order}[arg_name])\n\n"
+                f"for arg_name, var_name in {eval_params}.items():\n"
+                f"    val = eval(var_name)\n"
+                f"    resolved_args_{order}.update({{arg_name: val}}) \n"
+                f"    print(arg_name,'=',resolved_args_{order}[arg_name])\n\n"
+                f"mitosis._prettyprint_config(Path('{trials_folder}'), resolved_args_{order})\n"  # noqa E501
+                f"print('Saving metadata to {trials_folder}')\n"
+            )
+        )
+        step_loader_cells.append(nbformat.v4.new_code_cell(source=code))
+
+        code = (
+            f"if inputs is not None:\n"
+            f"    curr_result = step_{order}(inputs, **resolved_args_{order})\n"
+            f"else:\n"
+            f"    curr_result = step_{order}(**resolved_args_{order})\n"
+            f"with open(r'{trials_folder / (f'results_{order}.dill')}', 'wb') as f:\n"  # noqa E501
+            f"    dill.dump(curr_result, f)\n"
+            f"print(repr(curr_result))\n"
+            f"inputs = curr_result.get('data', None)\n"
+        )
+        step_runner_cells.append(nbformat.v4.new_code_cell(source=code))
+
+    nb["cells"] = [setup_cell] + step_loader_cells + step_runner_cells
+    with open(trials_folder / "source.py", "w") as fh:
+        fh.write("".join(cell["source"] for cell in nb.cells))
     ep = ExecutePreprocessor(timeout=-1)
+
     exception = None
     metrics = None
     if debug:
@@ -595,6 +502,78 @@ class StrictlyReproduceableList(List):
         return string
 
 
+def _make_metadata_folder(trials_folder: Path, rand_key: str) -> Path:
+    metadata_key = datetime.now().astimezone().strftime(r"%Y-%m-%d") + f"_{rand_key}"
+    metadata_folder = trials_folder / metadata_key
+    metadata_folder.mkdir()
+    return metadata_folder
+
+
+def _create_filename(
+    variant: str,
+    debug: bool,
+    iteration: int,
+    suffix: Optional[str],
+    extension: str,
+) -> str:
+    new_filename = f"trial_{variant}_{iteration}_{suffix}"
+    if debug:
+        new_filename += "debug"
+    elif extension == "html":
+        new_filename += ".html"
+    elif extension == "ipynb":
+        new_filename += ".ipynb"
+    return new_filename
+
+
+def _log_start_experiment(
+    exp_logger: logging.Logger,
+    variant: str,
+    iteration: int,
+    commit: str,
+    debug: bool,
+) -> float:
+    exp_logger.info(f"trial entry: insert--{variant}--{iteration}--{commit}--------")
+    utc_now = datetime.now(timezone.utc)
+    cpu_now = process_time()
+    log_msg = (
+        f"Running experiment {variant}, "
+        f"iteration {iteration} at time: "
+        + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
+        + f".  Current repo hash: {commit}"
+    )
+    if debug:
+        log_msg += ".  In debugging mode."
+    exp_logger.info(log_msg)
+    return cpu_now
+
+
+def _log_finish_experiment(
+    exp_logger: logging.Logger,
+    variant: str,
+    iteration: int,
+    commit: str,
+    metric: Optional[str],
+    filename: str,
+    start_time: float,
+) -> None:
+    utc_now = datetime.now(timezone.utc)
+    exp_logger.info(
+        "Finished experiment at time: "
+        + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
+        + f".  Results: {metric}"
+    )
+    exp_logger.info(
+        "trial entry: update"
+        + f"--{variant}"
+        + f"--{iteration}"
+        + f"--{commit}"
+        + f"--{process_time() - start_time}"
+        + f"--{metric}"
+        + f"--{filename}"
+    )
+
+
 def _write_freezefile(folder: Path):
     installed = {pkg for pkgs in packages_distributions().values() for pkg in pkgs}
     req_str = f"# {sys.version}\n"
@@ -607,3 +586,11 @@ def _prettyprint_config(folder: Path, params: Collection[Parameter]):
     pretty = pprint.pformat(params)
     with open(folder / "config.txt", "w") as f:
         f.write(pretty)
+
+
+def unpack(obj_ref: str) -> Any:
+    modname, _, qualname = obj_ref.partition(":")
+    obj = import_module(modname)
+    for attr in qualname.split("."):
+        obj = getattr(obj, attr)
+    return obj
