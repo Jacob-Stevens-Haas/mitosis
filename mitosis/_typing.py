@@ -3,12 +3,13 @@ from dataclasses import dataclass
 from dataclasses import field
 from types import ModuleType
 from typing import Any
+from typing import Callable
 from typing import NamedTuple
-from typing import Protocol
+from typing import ParamSpec
 
 
-class ExpRun(Protocol):  # Can't handle Varargs
-    def __call__(self, *args: Any, **kwargs: Any) -> dict: ...  # noqa: E704
+P = ParamSpec("P")
+ExpRun = Callable[P, dict]
 
 
 class Experiment(ModuleType, metaclass=ABCMeta):
