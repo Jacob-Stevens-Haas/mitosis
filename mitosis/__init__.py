@@ -584,8 +584,9 @@ def _write_freezefile(folder: Path):
 
 def _prettyprint_config(folder: Path, params: Collection[Parameter]):
     pretty = pprint.pformat(params)
-    with open(folder / "config.txt", "w") as f:
+    with open(folder / "config.txt", "a") as f:
         f.write(pretty)
+        f.write("\n")
 
 
 def unpack(obj_ref: str) -> Any:

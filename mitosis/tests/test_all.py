@@ -142,7 +142,7 @@ def test_mock_experiment(mock_steps, tmp_path):
     assert len(data[1]["data"]) == 5
 
 
-def test_mod_logging_debug(mock_steps, tmp_path):
+def test_mod_metadata_debug(mock_steps, tmp_path):
     hexstr = mitosis.run(
         mock_steps,
         debug=True,
@@ -153,10 +153,15 @@ def test_mod_logging_debug(mock_steps, tmp_path):
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
     assert "This is run in debug mode only" in log_str
+    with open(trial_folder / "config.txt") as f:
+        config_lines = f.readlines()
+    config_params = [eval(line) for line in config_lines]
+    passed_params = [{p.arg_name: p.vals for p in step.args} for step in mock_steps]
+    assert config_params == passed_params
 
 
 @pytest.mark.clean
-def test_mod_logging(mock_steps, tmp_path):
+def test_mod_metadata(mock_steps, tmp_path):
     hexstr = mitosis.run(
         mock_steps,
         debug=False,
@@ -167,6 +172,11 @@ def test_mod_logging(mock_steps, tmp_path):
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
     assert "This is run in debug mode only" not in log_str
+    with open(trial_folder / "config.txt") as f:
+        config_lines = f.readlines()
+    config_params = [eval(line) for line in config_lines]
+    passed_params = [{p.arg_name: p.vals for p in step.args} for step in mock_steps]
+    assert config_params == passed_params
 
 
 def test_malfored_return_experiment(mock_steps, tmp_path):
