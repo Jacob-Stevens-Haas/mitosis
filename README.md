@@ -13,7 +13,9 @@ different commits, parameterizations, and random seed.
 
 ## Trivial Example
 
-*sine_experiment.py*
+Hypothesis: the maximum value of a sine wave is equal to its amplitude.
+
+*sine_experiment/\_\_init\_\_.py*
 
 
     import numpy as np
@@ -21,7 +23,7 @@ different commits, parameterizations, and random seed.
     name = "sine-exp"
     lookup_dict = {"frequency": {"fast": 10, "slow": 1}}
 
-    def run(seed, amplitude, frequency):
+    def run(amplitude, frequency):
         """Deterimne if the maximum value of the sine function equals ``amplitude``"""
         x = np.arange(0, 10, .05)
         y = amplitude * np.sin(frequency * x)
@@ -30,7 +32,7 @@ different commits, parameterizations, and random seed.
 
 Commit these changes to a repository.  After installing sine_experiment as a python package, in CLI, run:
 
-    mitosis sine_experiment --param frequency=slow --eval-param amplitude=4
+    mitosis -m sine_experiment --param frequency=slow --eval-param amplitude=4
 
 Mitosis will run `sin_experiment.run()`, saving
 all output as an html file in the current directory.  It will also
@@ -57,10 +59,13 @@ The first time `mitosis.run()` is passed a new experiment, it takes several acti
 9. Save the experiments results (in metadata folder)
 
 In step 3, `mitosis` attempts to create a unique and reproduceable string from each
-parameter value.  This is tricky, since most python objects are mutable and/or have
-their `id()` stored in their string representation.  So lists must be sorted, dicts must
-be ordered, and function and method arguments must be wrapped in a class with and a
-custom `__str__()` attribute.  This is imperfectly done, see the **Reproduceability **
+parameter value.
+This is essential, since it strikes at the heart of what reproducibility means when talking about experiments.
+It's also hard, since most python objects are mutable and/or have
+their `id()` stored in their string representation.
+So lists must be sorted, dicts must
+be ordered, and function and method arguments must have their `__str__()` attribute replaced.
+This is imperfectly done, see the **Reproduceability **
 section for comments on the edge cases where `mitosis` will either treat the same
 parameter as a new variant, or treat two different parameters as having the same value.
 
@@ -71,31 +76,41 @@ to the notebook via pickle; that proved fragile.
 
 The next time `mitosis.run()` is given the same experiment, it will
 1. Determine whether parameter names and values match parameters in a previously established
-variant.  If they do not, it will either:
-   1. Reject the trial if the passed variant names match existing variants
+variant.  It will either:
+   * Reject the trial if the passed variant names match existing variants
    but with different values.
-   2. Create a new variant for the parameter.
-1. do steps 4 to 9 above.
+   * Create a new variant for the parameter.
+2. Proceeds through steps 4 to 9 above.
 
 
 ## Abstractions
 
 **Experiment:** the definition of a procedure that will test a hypothesis.
-As a python object, an experiment must have a `Callable` attribute named "run"
+As a python object, an experiment is a series of steps, each of which is
+a tuple of a `name`, a lookup dictionary, and a `Callable`
 that takes any number of arguments and returns a dict with at least a key named
-"main".  It also requires a `name` and `lookup_dict` attribute.
+"main".  All but the last also need a key "data" to pass to the next step.  All
+but the first step need to accept an argument named data.
 
-In its current form, `mitosis` does not require a hypothesis, but it does
-require experiments to define the "main" metric worth evaluating (though a
+In its current form, `mitosis` does not require a hypothesis, but consider
+the "main" metric to stand in for a more formal hypothesis (though a
 user can always define an experiment that sets the main metric to a constant).
 
+When running in module mode (`-m` on command line), the lookup dictionary, name, and
+callable are all loaded from the module's `lookup_dict`, `__qualname__`, and `run`
+variables.  Otherwise, they're configured in pyproject.toml.
+
 **Parameter**: An argument to an experiment.  These are the axes by which an experiment
-may vary, e.g. `sim_params`, `data_params`, `solver_params`... etc.  When this argument
+step may vary, e.g. `sim_params`, `data_params`, `solver_params`... etc.  When this argument
 is a `Collection`, sometimes the singular (parameter) and plural (parameters) are used
-interchangeably.  Parameters can either be lookup parameters (which require the
-experiment to have an attribute `lookup_dict`) or eval parameters (which are typically
+interchangeably.  Parameters can either be lookup parameters (which use the
+step's' `lookup_dict`) or eval parameters (which are typically
 simple evaluations, e.g. setting the random seed to a given integer).  Eval parameters
 which are strings need quotes.
+
+When running in module mode (`-m` on command line), experiments only have a single step,
+so mitosis associates all arguments with that step.  In normal mode, the arguments for a
+step must be prefixed with that step name, e.g. `step1.noise_level`
 
 **Variant**: An experimental parameter assigned to specific values and given a name.
 
@@ -109,10 +124,16 @@ the trial re-run with the same parameters, the new trial would be named
 
 Within `mitosis`, the trial is used to name the resulting html file and is stored in
 the "variant" and "iteration" columns in the experiment's sqlite database.
+the pseudorandom key that is attached to filename serves as an effective primary key
+over all variants and trials.
 
-# CLI
+# API
 
-See [an example](https://github.com/Jacob-Stevens-Haas/gen-experiments/blob/57877df35a9775db15719e16396fe8b06df5e3fa/run_exps.sh).
+Mitosis is primarily intended as a command line program, so `mitosis --help` has the syntax documentation.   There is only one intentionally publi part of the api: `mitosis.load_trial_data()`.
+
+Here's a [pre-0.5.0 example](https://github.com/Jacob-Stevens-Haas/gen-experiments/blob/57877df35a9775db15719e16396fe8b06df5e3fa/run_exps.sh), when the `-m` flag was assumed.  For 0.5.0 usage, see the section on "More advanced usage"
+
+
 
 ## Untracked parameters
 
@@ -121,7 +142,7 @@ that do not change the mathematical results, prepend the argument name with "+".
 An example:
 
 ```
-mitosis project_pkg.exp1 -e +plot=True -p +plot_axes=dense
+mitosis -m project_pkg.exp1 -e +plot=True -p +plot_axes=dense
 ```
 
 ## Fast iterations: Debug
@@ -142,26 +163,13 @@ Mitosis also sets the log level of the experiment module to INFO and gives it
 a FileHandler to the metadata directory.  In Debug mode, mitosis sets the log
 level of the experiment to DEBUG.
 
-## Sharing code between experiments: Group
+# More advanced usage.
 
-If your experimental code is intended to be used for multiple dissimilar
-experiments and want to track results separately, assign a group at the command
-line.  The string is passed as an argument "group" to the experiment's run()
-function.  It is treated as a special eval parameter, so if passed, there must
-be no other params named group
+## Module-style experiments
 
-Group is more complex, but a simple example will help:
-```
-mitosis project_pkg.pdes -g heat -p initial_condition=origin-bump
-mitosis project_pkg.pdes -g heat2d -p initial_condition=origin-bump2d
-mitosis project_pkg.gridsearch -g pdes-heat -p initial_condition=origin-bump
-```
+It should be noted that mitosis only works on installed packages - modules that you can run using `python -m pkgname.modname`.
 
-# Some more advanced usage.
-
-It should be noted that mitosis only works on installed packages - modules that you can run using `python -m pkgname`.
-
- When you want two modules share the same, long lookup_dict, I have found creating a
+When you want two modules share the same, long lookup_dict, I have found creating a
 module with multiple dictionaries works well, e.g.
 
     project_pkg/
@@ -176,22 +184,54 @@ module with multiple dictionaries works well, e.g.
 This way, the same variants can be used for different experiemnts:
 
 ```
-mitosis project_pkg.exp1 -e seed=2 -p param_1=var_1 -p param_2=foo
-mitosis project_pkg.exp2 -e seed=2 -p param_1=var_1 -p param_2=foo
+mitosis -m project_pkg.exp1 -e seed=2 -p param_1=var_1 -p param_2=foo
+mitosis -m project_pkg.exp2 -e seed=2 -p param_1=var_1 -p param_2=foo
 ```
 It is also common to have one experiment wrap another, e.g. if exp2 is a gridsearch
 around exp1.
 
-I typically run experiments on servers, so `nohup ... &> exp.log &` frees up the
-terminal and lets me disconnect ssh, returning later and reading exp.log to see
-that the experiment worked or what errors occurred
-(if error occurs inside the experiment and not inside `mitosis`, they will also
-be visible in the generated html notebook).
-If I have a variety of experiments that I want to run, I can copy and paste a
-lot of experiments all at once into the terminal, and they will all execute in
-parallel.
+## Recommended: multi-step experiments
 
-# Reproduceability Thoughts
+Sometimes it's useful to combine steps from different packages, or share steps across projects,
+or distribute your experiment without the clutter of a lookup dictionary holding every variant
+you tried out.
+In these cases, the _project_ is responsible for naming and connecting the callable <-> lookup-dictionary association.
+These experiment steps are specified in pyproject.toml, in the `[tools.mitosis.steps]` table using
+object reference notation (à la plugins).
+
+Let's say your project folder is called `my_paper` and contains an eponymous python package.  You have an experiment defined in the package `first_exp`, broken down into functions `make_data()` and `linear_pipeline`, but you want to be able to swap out the first step for real data in another module `geospatial.datasets`, you could have the following table in your project's pyproject.toml (likely within the `my_paper` repo):
+
+    [tool.mitosis.steps]
+    real_data = ["geospatial.datasets:load_data", "my_paper:data_config"]
+    sim_data = ["first_exp:make_data", "my_paper:data_config"]
+    fit_eval = ["first_exp:linear_pipeline", "my_paper:meth_config"]
+
+This also says that the lookup dicts for each step are all imported from `my_paper`.  You would invoke experiments like:
+
+```
+mitosis sim_data fit_eval --p sim_data.noise=low -e linear_pipeline.alpha=.5
+mitosis real_data fit_eval -p real_data.file="oct-2024.hd5" -e linear_pipeline.alpha=.5
+```
+
+Needless to say, all of the callables need to pass data compatibly, e.g.
+`first_exp.linear_pipeline(first_exp.make_data(...)["data"], ...)` must make sense, as must
+`first_exp.linear_pipeline(geospatial.datasets.load_data(...)["data"], ...)`.  Some caution here is advised - mitosis does not yet check all editably-installed packages for being git-clean.
+
+You could then have code in `my_paper` that loads the data from these trials and builds comparison plots, or you could rely on the plots each experiment creates.  You could also have a shell/batch script that spawns the main experiments of your paper.
+
+I'm often on a server and want to disconnect while the experiment is running, so I wrap my experiments in `nohup ... &> exp1.log &`.
+
+
+## Using persistent data
+
+There are two obviously useful things to do after an experiment:
+* view the html file.  `python -m http.server` is helpful to browse results
+* load the data with `load_trial_data()`
+
+Beyond this, the metadata mitosis keeps to disk is useful for troubleshooting or reproducing experiments, but no facility yet exists to browse or compare experiments.
+
+
+<!-- # Reproduceability Thoughts
 
 The goal of the package, experimental reproduceability, poses a few fun challenges.
 Here are my thoughts on reproduceable desiderata.
@@ -227,4 +267,4 @@ in the list below, making compromises along the way:
 7. Ability to freeze/reproduce mutable arguments
 8. Ability to recreate arguments from either their `__repr__` string or their serialization
 9. Don't run experiments without specifying a hypothesis first
-10. For experiments that require randomness, only use a single, reproduceable generator.
+10. For experiments that require randomness, only use a single, reproduceable generator. -->
