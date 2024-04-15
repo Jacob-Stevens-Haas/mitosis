@@ -209,7 +209,7 @@ Let's say your project folder is called `my_paper` and contains an eponymous pyt
 This also says that the lookup dicts for each step are all imported from `my_paper`.  You would invoke experiments like:
 
 ```
-mitosis sim_data fit_eval --p sim_data.noise=low -e fit_eval.alpha=.5
+mitosis sim_data fit_eval -p sim_data.noise=low -e fit_eval.alpha=.5
 mitosis real_data fit_eval -p real_data.file="oct-2024.hd5" -e fit_eval.alpha=.5
 ```
 
