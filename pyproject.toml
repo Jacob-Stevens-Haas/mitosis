@@ -74,6 +74,7 @@ mitosis="mitosis.__main__:main"
 packages = ["mitosis"]
 
 [tool.setuptools_scm]
+version_file = "mitosis/_version.py"
 
 [tool.black]
 line-length = 88

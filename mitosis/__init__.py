@@ -47,9 +47,10 @@ from sqlalchemy import Table
 from sqlalchemy import update
 
 from . import _disk
+from ._disk import _locate_trial_folder
 from ._typing import ExpStep
 from ._typing import Parameter
-from mitosis._disk import _locate_trial_folder
+from ._version import version as __version__  # noqa: F401
 
 
 def trials_columns():
