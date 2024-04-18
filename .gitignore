@@ -2,6 +2,7 @@ commit-msg
 todo
 .vscode
 trials/
+mitosis/_version.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
