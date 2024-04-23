@@ -187,14 +187,24 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def normalize_modinput(obj_ref: str) -> dict[str, tuple[str, str]]:
+    modname, _, qualname = obj_ref.partition(":")
+    if qualname:
+        sep = ":" + qualname + "."
+    else:
+        sep = ":"
+    return {obj_ref: (modname + sep + "run", modname + sep + "lookup_dict")}
+
+
 def main() -> None:
     parser = _create_parser()
     args = parser.parse_args()
     if args.version:
         try:
             import setuptools_scm  # type: ignore
+
             vstring = setuptools_scm.get_version()
-        except:
+        except Exception:
             vstring = __version__
         print("mitosis", vstring)
         return
@@ -204,12 +214,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-def normalize_modinput(obj_ref: str) -> dict[str, tuple[str, str]]:
-    modname, _, qualname = obj_ref.partition(":")
-    if qualname:
-        sep = ":" + qualname + "."
-    else:
-        sep = ":"
-    return {obj_ref: (modname + sep + "run", modname + sep + "lookup_dict")}
