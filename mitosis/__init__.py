@@ -354,7 +354,7 @@ def _run_in_notebook(
     for order, step in enumerate(steps):
         lookup_params = {a.arg_name: a.var_name for a in step.args if not a.evaluate}
         eval_params = {a.arg_name: a.var_name for a in step.args if a.evaluate}
-
+        logfile = trials_folder / "experiment.log"
         code = (
             (
                 f"step_{order} = mitosis.unpack('{step.action_ref}')\n"
@@ -368,7 +368,8 @@ def _run_in_notebook(
                 else "logger.setLevel(logging.INFO)\n"
             )
             + (
-                f"logger.addHandler(logging.FileHandler('experiment.log', delay=True))\n"  # noqa E501
+                f"logger.addHandler(logging.FileHandler('{str(logfile)}', delay=True))\n"  # noqa E501
+                f"logger.info('Initialized experiment logger')\n"
                 f'print("Loaded step {order} as {step.action_ref}")\n'
                 f'print("Loaded lookup {order} as {step.lookup_ref}")\n'
                 f"for arg_name, var_name in {lookup_params}.items():\n"
