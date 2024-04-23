@@ -1,7 +1,12 @@
+import contextlib
+import sys
 from argparse import Namespace
+from io import StringIO
+from typing import Generator
 
 import pytest
 
+from mitosis.__main__ import main
 from mitosis.__main__ import _create_parser
 from mitosis.__main__ import _process_cl_args
 from mitosis.__main__ import _split_param_str
@@ -106,3 +111,30 @@ def test_normalize_modinput():
             "mitosis.tests.mock_experiment:MockExp.MockExpInner.lookup_dict",
         )
     }
+
+
+def test_version():
+    @contextlib.contextmanager
+    def set_argv(*args: str) -> Generator[None, None, None]:
+        temp = sys.argv
+        try:
+            sys.argv = list(args)
+            yield
+        finally:
+            sys.argv = temp
+
+    @contextlib.contextmanager
+    def capture_stdout() -> Generator[StringIO, None, None]:
+        stdout = sys.stdout
+        new_out = StringIO()
+        try:
+            sys.stdout = new_out
+            yield new_out
+        finally:
+            sys.stdout = stdout
+
+    with set_argv("mitosis", "--version"):
+        with capture_stdout() as out:
+            main()
+            result = out.getvalue()
+    assert result.split()[0] == "mitosis"

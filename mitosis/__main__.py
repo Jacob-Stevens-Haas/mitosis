@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 from typing import NamedTuple
 
+from . import __version__
 from . import _disk
 from . import run
 from . import unpack
@@ -27,6 +28,11 @@ def _create_parser() -> argparse.ArgumentParser:
         "--module",
         nargs="?",
         help="Load complete experiment from a module",
+    )
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Print version information and exit",
     )
     parser.add_argument(
         "--debug",
@@ -184,6 +190,14 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
 def main() -> None:
     parser = _create_parser()
     args = parser.parse_args()
+    if args.version:
+        try:
+            import setuptools_scm  # type: ignore
+            vstring = setuptools_scm.get_version()
+        except:
+            vstring = __version__
+        print("mitosis", vstring)
+        return
     kwargs = _process_cl_args(args)
     run(**kwargs)
 
