@@ -6,10 +6,10 @@ from typing import Generator
 
 import pytest
 
-from mitosis.__main__ import main
 from mitosis.__main__ import _create_parser
 from mitosis.__main__ import _process_cl_args
 from mitosis.__main__ import _split_param_str
+from mitosis.__main__ import main
 from mitosis.__main__ import normalize_modinput
 from mitosis.tests.mock_legacy import lookup_dict
 from mitosis.tests.mock_legacy import run
