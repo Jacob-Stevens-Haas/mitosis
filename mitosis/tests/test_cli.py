@@ -65,7 +65,7 @@ def test_argparse_options():
     assert args.module == "mod"
     assert args.debug is True
     assert args.config == "foo.toml"
-    assert args.folder == "foo/bar"
+    assert args.trials_folder == "foo/bar"
     assert args.eval_param == []
     assert args.param == []
 
@@ -81,7 +81,7 @@ def test_argparse_main():
     assert args.module is None
     assert args.debug is False
     assert args.config == "pyproject.toml"
-    assert args.folder is None
+    assert args.trials_folder is None
     assert len(args.eval_param) == 2
     assert len(args.param) == 3
 

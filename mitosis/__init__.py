@@ -47,7 +47,7 @@ from sqlalchemy import Table
 from sqlalchemy import update
 
 from . import _disk
-from ._disk import _locate_trial_folder
+from ._disk import locate_trial_folder
 from ._typing import ExpStep
 from ._typing import Parameter
 from ._version import version as __version__  # noqa: F401
@@ -72,7 +72,7 @@ def variant_types():
 
 
 def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
-    trial = _locate_trial_folder(hexstr, trials_folder=trials_folder)
+    trial = locate_trial_folder(hexstr, trials_folder=trials_folder)
     all_files = glob("results*.dill", root_dir=trial)
     results = []
     for file in all_files:

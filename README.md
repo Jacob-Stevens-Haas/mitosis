@@ -222,6 +222,11 @@ You could then have code in `my_paper` that loads the data from these trials and
 I'm often on a server and want to disconnect while the experiment is running, so I wrap my experiments in `nohup ... &> exp1.log &`.
 
 
+## pyproject.toml config
+The `[tool.mitosis]` table can be used to set `trials-folder`.  If relative,
+it is relative to repository root.
+
+
 ## Using persistent data
 
 There are two obviously useful things to do after an experiment:

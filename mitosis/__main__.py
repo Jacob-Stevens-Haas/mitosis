@@ -1,6 +1,5 @@
 import argparse
 from itertools import groupby
-from pathlib import Path
 from typing import Any
 from typing import NamedTuple
 
@@ -47,14 +46,18 @@ def _create_parser() -> argparse.ArgumentParser:
         "--config",
         type=str,
         default="pyproject.toml",
-        help="Name or path of config file",
+        help="Name or path to config file",
     )
     parser.add_argument(
-        "--folder",
+        "--trials-folder",
         "-F",
         type=str,
         default=None,
-        help="Where to save trials, relative to the experiment module folder",
+        help=(
+            "Where to save trials, relative to the current working directory. "
+            "If passed, overrides value in config file.  If not passed and no "
+            "configured value , mitosis uses <repository root> / 'trials'."
+        ),
     )
     parser.add_argument(
         "--eval-param",
@@ -63,8 +66,8 @@ def _create_parser() -> argparse.ArgumentParser:
         default=[],
         action="append",
         help=(
-            "Parameters directly passed on command line.  Make sure to quote if you"
-            " want argument to evaluate as a string"
+            "Parameters directly passed on command line.  Make sure to escape quotes if"
+            " you want argument to evaluate as a string"
         ),
     )
     parser.add_argument(
@@ -176,10 +179,7 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
         for step_name in all_steps.keys()
     ]
 
-    if args.folder is None:
-        folder = Path(_disk.get_repo().working_dir) / "trials"
-    else:
-        folder = Path(args.folder)
+    folder = _disk.locate_trial_folder(trials_folder=args.folder, proj_file=args.config)
     return {
         "steps": exp_steps,
         "debug": args.debug,

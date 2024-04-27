@@ -148,7 +148,7 @@ def test_mod_metadata_debug(mock_steps, tmp_path):
         debug=True,
         trials_folder=tmp_path,
     )
-    trial_folder = _disk._locate_trial_folder(hexstr, trials_folder=tmp_path)
+    trial_folder = _disk.locate_trial_folder(hexstr, trials_folder=tmp_path)
     with open(trial_folder / "experiment.log", "r") as f:
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
@@ -167,7 +167,7 @@ def test_mod_metadata(mock_steps, tmp_path):
         debug=False,
         trials_folder=tmp_path,
     )
-    trial_folder = _disk._locate_trial_folder(hexstr, trials_folder=tmp_path)
+    trial_folder = _disk.locate_trial_folder(hexstr, trials_folder=tmp_path)
     with open(trial_folder / "experiment.log", "r") as f:
         log_str = "".join(f.readlines())
     assert "This is run every time" in log_str
@@ -221,7 +221,7 @@ def test_load_toml():
 def test_load_bad_toml():
     parent = Path(__file__).resolve().parent
     tomlfile = parent / "pyproject_missing.toml"
-    with pytest.raises(RuntimeError, match="does not have a tools"):
+    with pytest.raises(RuntimeError, match="does not have a tool"):
         _disk.load_mitosis_steps(tomlfile)
     tomlfile = parent / "pyproject_malformed.toml"
     with pytest.raises(RuntimeError, match="table is malformed"):
