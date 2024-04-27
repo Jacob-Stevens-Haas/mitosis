@@ -89,8 +89,8 @@ def locate_trial_folder(
             trials_folder = Path("trials")
     else:
         trials_folder = Path(trials_folder).resolve()
-    if not trials_folder.absolute():
-        trials_folder = get_repo().working_dir.absolute() / trials_folder
+    if not trials_folder.is_absolute():
+        trials_folder = Path(get_repo().working_dir).absolute() / trials_folder
     if not hexstr:
         return trials_folder
 

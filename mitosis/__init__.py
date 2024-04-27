@@ -522,7 +522,7 @@ def _create_filename(
     new_filename = f"trial_{variant}_{iteration}_{suffix}"
     if debug:
         new_filename += "debug"
-    elif extension == "html":
+    if extension == "html":
         new_filename += ".html"
     elif extension == "ipynb":
         new_filename += ".ipynb"
