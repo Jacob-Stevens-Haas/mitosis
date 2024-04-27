@@ -398,7 +398,8 @@ def _run_in_notebook(
         )
         step_runner_cells.append(nbformat.v4.new_code_cell(source=code))
 
-    nb["cells"] = [setup_cell] + step_loader_cells + step_runner_cells
+    result_cell = nbformat.v4.new_code_cell(source=("print(curr_result['main'])"))
+    nb["cells"] = [setup_cell] + step_loader_cells + step_runner_cells + [result_cell]
     with open(trials_folder / "source.py", "w") as fh:
         fh.write("".join(cell["source"] for cell in nb.cells))
     ep = ExecutePreprocessor(timeout=-1)
@@ -411,7 +412,7 @@ def _run_in_notebook(
         allowed = (CellExecutionError,)
     try:
         ep.preprocess(nb, {"metadata": {"path": trials_folder}})
-        metrics = nb["cells"][-1]["outputs"][0]["text"][:-1]
+        metrics = nb["cells"][-1]["outputs"][0]["text"][:-1]  # last char is newline
     except allowed as exc:
         exception = exc
     return nb, metrics, exception
