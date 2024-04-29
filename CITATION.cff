@@ -1,0 +1,28 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: mitosis
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Jacob
+    family-names: Stevens-Haas
+    email: jacob.stevens.haas@gmail.com
+    orcid: 'https://orcid.org/0000-0003-4142-5550'
+    affiliation: University of Washington
+repository-code: 'https://github.com/Jacob-Stevens-Haas/mitosis'
+url: 'https://pypi.org/projects/mitosis'
+abstract: >-
+  A package designed to manage and visualize experiments,
+  tracking changes across different commits,
+  parameterizations, and random seed.
+keywords:
+  - experiments
+  - reproducibility
+license: MIT
+commit: 8785ed4785b59ff77e43888b3561c58cf0a7bbef
+version: 0.5.1
+date-released: '2024-04-26'
