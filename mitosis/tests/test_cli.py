@@ -1,4 +1,5 @@
 import contextlib
+import os
 import sys
 from argparse import Namespace
 from io import StringIO
@@ -28,7 +29,7 @@ def test_legacy_module(params, eval_params):
         module="mitosis.tests.mock_legacy",
         debug=True,
         config="pyproject.toml",
-        folder=None,
+        trials_folder=None,
         eval_param=eval_params,
         param=params,
     )
@@ -45,7 +46,7 @@ def test_experiment_arg():
         module=None,
         debug=True,
         config="mitosis/tests/test_pyproject.toml",
-        folder=None,
+        trials_folder=None,
         eval_param=["data.extra=True"],
         param=["data.length=test", "fit_eval.metric=test"],
     )
@@ -54,6 +55,25 @@ def test_experiment_arg():
     assert [step.name for step in result["steps"]] == ["data", "fit_eval"]
     assert result["steps"][0].action == Klass.gen_data
     assert id(result["steps"][1].lookup) == id(meth_config)
+
+
+def test_folder_arg(tmp_path):
+    parser = _create_parser()
+    args = parser.parse_args(["-m", "mitosis.tests.mock_legacy", "-F", "foo"])
+
+    @contextlib.contextmanager
+    def change_cwd(new_pth: os.PathLike) -> Generator[None, None, None]:
+        temp = os.getcwd()
+        try:
+            os.chdir(new_pth)
+            yield
+        finally:
+            os.chdir(temp)
+
+    with change_cwd(tmp_path):
+        result = _process_cl_args(args)["trials_folder"]
+    expected = tmp_path / "foo"
+    assert result == expected
 
 
 def test_argparse_options():

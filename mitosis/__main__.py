@@ -179,7 +179,9 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
         for step_name in all_steps.keys()
     ]
 
-    folder = _disk.locate_trial_folder(trials_folder=args.folder, proj_file=args.config)
+    folder = _disk.locate_trial_folder(
+        trials_folder=args.trials_folder, proj_file=args.config
+    )
     return {
         "steps": exp_steps,
         "debug": args.debug,
