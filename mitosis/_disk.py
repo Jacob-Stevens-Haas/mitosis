@@ -30,7 +30,7 @@ def load_mitosis_steps(
         )
     if any(not isinstance(vals, list) or len(vals) != 2 for vals in result.values()):
         raise RuntimeError("tool.mitosis.steps table is malformed")
-    return {k: tuple(v) for k, v in result.items()}
+    return {k: tuple(v)[:2] for k, v in result.items()}
 
 
 @lru_cache

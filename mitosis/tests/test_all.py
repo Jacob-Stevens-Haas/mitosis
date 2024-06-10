@@ -1,3 +1,4 @@
+import pickle
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -139,9 +140,23 @@ def test_mock_experiment(mock_steps, tmp_path):
         trials_folder=tmp_path,
     )
     data = mitosis.load_trial_data(exp_key, trials_folder=tmp_path)
-    assert len(data[1]["data"]) == 5
+    assert len(data[0]["data"]) == 5
     metadata = mitosis._disk.locate_trial_folder(exp_key, trials_folder=tmp_path)
     assert (metadata / "experiment").resolve().exists()
+
+
+def test_load_results_order(tmp_path):
+    exp_key = "test_results"
+    (tmp_path / exp_key).mkdir()
+    filename1 = "results1.dill"
+    filename2 = "results0.dill"
+    with open(tmp_path / exp_key / filename1, "wb") as f1:
+        pickle.dump("second", f1)
+    with open(tmp_path / exp_key / filename2, "wb") as f2:
+        pickle.dump("first", f2)
+    result = mitosis.load_trial_data(exp_key, trials_folder=tmp_path)
+    expected = ["first", "second"]
+    assert result == expected
 
 
 def test_mod_metadata_debug(mock_steps, tmp_path):

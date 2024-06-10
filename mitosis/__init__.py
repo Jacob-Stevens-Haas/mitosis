@@ -73,7 +73,7 @@ def variant_types():
 
 def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
     trial = locate_trial_folder(hexstr, trials_folder=trials_folder)
-    all_files = glob("results*.dill", root_dir=trial)
+    all_files = sorted(glob("results*.dill", root_dir=trial))
     results = []
     for file in all_files:
         with open(trial / file, "rb") as fh:
