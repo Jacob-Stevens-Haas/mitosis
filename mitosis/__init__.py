@@ -393,7 +393,10 @@ def _run_in_notebook(
             f"    curr_result = step_{order}(**resolved_args_{order})\n"
             f"with open(r'{trials_folder / (f'results_{order}.dill')}', 'wb') as f:\n"  # noqa E501
             f"    dill.dump(curr_result, f)\n"
-            f"print(repr(curr_result))\n"
+            f"try:\n"
+            f"    print(curr_result['metrics'])\n"
+            f"except KeyError:\n"
+            f"    pass\n"
             f"inputs = curr_result.get('data', None)\n"
         )
         step_runner_cells.append(nbformat.v4.new_code_cell(source=code))
