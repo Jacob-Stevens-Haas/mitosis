@@ -8,6 +8,7 @@ from typing import Generator
 import pytest
 
 from mitosis.__main__ import _create_parser
+from mitosis.__main__ import _lookup_step_names
 from mitosis.__main__ import _process_cl_args
 from mitosis.__main__ import _split_param_str
 from mitosis.__main__ import main
@@ -16,6 +17,30 @@ from mitosis.tests.mock_legacy import lookup_dict
 from mitosis.tests.mock_legacy import run
 from mitosis.tests.mock_paper import meth_config
 from mitosis.tests.mock_part1 import Klass
+
+
+def test_cli_step_ordering():
+    # GH 48
+    expected = ["fit_eval", "data"]
+    args = Namespace(
+        experiment=expected,
+        module=None,
+        debug=True,
+        config="mitosis/tests/test_pyproject.toml",
+        trials_folder=None,
+        eval_param=[],
+        param=[],
+    )
+    result = [step.name for step in _process_cl_args(args)["steps"]]
+    assert result == expected
+
+
+def test_lookup_step_names_ordering():
+    # GH 48
+    expected = ["fit_eval", "data"]
+    steps = _lookup_step_names(expected, "mitosis/tests/test_pyproject.toml")
+    result = list(steps.keys())
+    assert result == expected
 
 
 @pytest.mark.parametrize(
