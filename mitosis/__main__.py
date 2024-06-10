@@ -103,6 +103,16 @@ def _split_param_str(paramstr: str) -> CLIParam:
     return CLIParam(ex_step, track, arg_name, var_name)
 
 
+def _lookup_step_names(
+    experiment: list[str], config: str
+) -> dict[str, tuple[str, str]]:
+    proj_steps = _disk.load_mitosis_steps(config)
+    steps = {}
+    for step_name in experiment:
+        steps[step_name] = proj_steps[step_name]
+    return steps
+
+
 def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     ep_tups = [_split_param_str(epstr) for epstr in args.eval_param]
     lp_tups = [_split_param_str(lpstr) for lpstr in args.param]
@@ -110,8 +120,7 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
     if args.experiment:
         if args.module:
             raise RuntimeError("Cannot use -m option if also passing experiment steps.")
-        proj_steps = _disk.load_mitosis_steps(args.config)
-        steps = dict(filter(lambda k: k[0] in args.experiment, proj_steps.items()))
+        steps = _lookup_step_names(args.experiment, args.config)
     elif args.module:
         mod: str = args.module
         steps = normalize_modinput(args.module)
