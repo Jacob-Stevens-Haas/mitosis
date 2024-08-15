@@ -360,7 +360,7 @@ def _run_in_notebook(
                 f"step_{order} = mitosis.unpack('{step.action_ref}')\n"
                 f"lookup_{order} = mitosis.unpack('{step.lookup_ref}')\n"
                 f"resolved_args_{order} = {{}}\n"
-                f"logger = logging.getLogger('{step.action.__module__}')\n"
+                f"logger = logging.getLogger()\n"
             )
             + (
                 "logger.setLevel(logging.DEBUG)\n"
