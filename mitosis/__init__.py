@@ -337,6 +337,12 @@ def _run_in_notebook(
     matplotlib_dpi=72,
     debug: bool = False,
 ) -> tuple[nbformat.NotebookNode, Optional[str], Optional[Exception]]:
+    logfile = trials_folder / "experiment.log"
+    logset_command = (
+        "logger.setLevel(logging.DEBUG)\n"
+        if debug
+        else "logger.setLevel(logging.INFO)\n"
+    )
     code = (
         "import logging\n"
         "from pathlib import Path\n\n"
@@ -346,6 +352,11 @@ def _run_in_notebook(
         f"mpl.rcParams['figure.dpi'] = {matplotlib_dpi}\n"
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
         "inputs = None\n"
+        "\n"
+        f"logger = logging.getLogger()\n"
+        f"{logset_command}\n"
+        f"logger.addHandler(logging.FileHandler('{str(logfile)}', delay=True))\n"  # noqa E501
+        f"logger.info('Initialized experiment logger')\n"
     )
     nb = nbformat.v4.new_notebook()
     setup_cell = nbformat.v4.new_code_cell(source=code)
@@ -354,35 +365,22 @@ def _run_in_notebook(
     for order, step in enumerate(steps):
         lookup_params = {a.arg_name: a.var_name for a in step.args if not a.evaluate}
         eval_params = {a.arg_name: a.var_name for a in step.args if a.evaluate}
-        logfile = trials_folder / "experiment.log"
         code = (
-            (
-                f"step_{order} = mitosis.unpack('{step.action_ref}')\n"
-                f"lookup_{order} = mitosis.unpack('{step.lookup_ref}')\n"
-                f"resolved_args_{order} = {{}}\n"
-                f"logger = logging.getLogger()\n"
-            )
-            + (
-                "logger.setLevel(logging.DEBUG)\n"
-                if debug
-                else "logger.setLevel(logging.INFO)\n"
-            )
-            + (
-                f"logger.addHandler(logging.FileHandler('{str(logfile)}', delay=True))\n"  # noqa E501
-                f"logger.info('Initialized experiment logger')\n"
-                f'print("Loaded step {order} as {step.action_ref}")\n'
-                f'print("Loaded lookup {order} as {step.lookup_ref}")\n'
-                f"for arg_name, var_name in {lookup_params}.items():\n"
-                f"    val = mitosis._lookup_param(arg_name, var_name, lookup_{order}).vals\n"  # noqa E501
-                f"    resolved_args_{order}.update({{arg_name: val}}) \n"
-                f"    print(arg_name,'=',resolved_args_{order}[arg_name])\n\n"
-                f"for arg_name, var_name in {eval_params}.items():\n"
-                f"    val = eval(var_name)\n"
-                f"    resolved_args_{order}.update({{arg_name: val}}) \n"
-                f"    print(arg_name,'=',resolved_args_{order}[arg_name])\n\n"
-                f"mitosis._prettyprint_config(Path('{trials_folder}'), resolved_args_{order})\n"  # noqa E501
-                f"print('Saving metadata to {trials_folder}')\n"
-            )
+            f"step_{order} = mitosis.unpack('{step.action_ref}')\n"
+            f"lookup_{order} = mitosis.unpack('{step.lookup_ref}')\n"
+            f"resolved_args_{order} = {{}}\n"
+            f'print("Loaded step {order} as {step.action_ref}")\n'
+            f'print("Loaded lookup {order} as {step.lookup_ref}")\n'
+            f"for arg_name, var_name in {lookup_params}.items():\n"
+            f"    val = mitosis._lookup_param(arg_name, var_name, lookup_{order}).vals\n"  # noqa E501
+            f"    resolved_args_{order}.update({{arg_name: val}}) \n"
+            f"    print(arg_name,'=',resolved_args_{order}[arg_name])\n\n"
+            f"for arg_name, var_name in {eval_params}.items():\n"
+            f"    val = eval(var_name)\n"
+            f"    resolved_args_{order}.update({{arg_name: val}}) \n"
+            f"    print(arg_name,'=',resolved_args_{order}[arg_name])\n\n"
+            f"mitosis._prettyprint_config(Path('{trials_folder}'), resolved_args_{order})\n"  # noqa E501
+            f"print('Saving metadata to {trials_folder}')\n"
         )
         step_loader_cells.append(nbformat.v4.new_code_cell(source=code))
 
