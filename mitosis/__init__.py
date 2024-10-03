@@ -1,4 +1,5 @@
 import logging
+import os
 import pprint
 import sys
 from collections import OrderedDict
@@ -8,9 +9,12 @@ from glob import glob
 from importlib import import_module
 from importlib.metadata import packages_distributions
 from importlib.metadata import version
+from importlib.util import module_from_spec
+from importlib.util import spec_from_file_location
 from logging import Logger
 from pathlib import Path
 from random import choices
+from tempfile import NamedTemporaryFile
 from time import process_time
 from types import BuiltinFunctionType
 from types import BuiltinMethodType
@@ -79,6 +83,50 @@ def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
         with open(trial / file, "rb") as fh:
             results.append(dill.load(fh))
     return results
+
+
+def _load_trial_params(
+    hexstr: str, *, step: int = 0, trials_folder: Optional[Path | str] = None
+) -> dict[str, Any]:
+    """Reload the parameters of a particular step of a trial (unstable)
+
+    Does not do any environment validation, which can cause failures.  E.g.
+    if the experiment code is a different version that used in the trial,
+    or if the python version is different, or if the experiment database file
+    has been reset and configuration file/lookup dictionary changed, no
+    guarantee can be made about the true value of the parameters returned.
+    """
+    metadata_dir = locate_trial_folder(hexstr, trials_folder=trials_folder)
+    src_file = metadata_dir / "source.py"
+    # Once on 3.12, change delete to "delete_on_close"
+    tempfile = NamedTemporaryFile(
+        "w+t", suffix=".py", prefix="mod_src", dir=metadata_dir, delete=False
+    )
+    src_text = ""
+    with open(src_file, "r") as f_src:
+        for line in f_src.readlines():
+            # hackiness: stop copying file before experiment execution code
+            if "mitosis._prettyprint_config" in line:
+                break
+            src_text += line
+    with tempfile as f_tgt:
+        f_tgt.write(src_text)
+        f_tgt.close()
+        src_spec = spec_from_file_location("_source", tempfile.name)
+        if src_spec is None:
+            raise RuntimeError(f"Unable to spec source file for trial {hexstr}")
+        src = module_from_spec(src_spec)
+        if src_spec.loader is None:
+            raise RuntimeError(f"Failed to load source file for trial {hexstr}")
+        src_spec.loader.exec_module(src)
+        os.unlink(tempfile.name)
+    try:
+        args = getattr(src, f"resolved_args_{step}")
+        sys.modules.pop("_source", None)
+        del src
+        return args
+    except AttributeError:
+        raise ValueError(f"Trial {hexstr} does not have a step {step}")
 
 
 def _lookup_param(

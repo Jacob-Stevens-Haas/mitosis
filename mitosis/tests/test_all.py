@@ -142,6 +142,8 @@ def test_mock_experiment(mock_steps, tmp_path):
     )
     data = mitosis.load_trial_data(exp_key, trials_folder=tmp_path)
     assert len(data[0]["data"]) == 5
+    params = mitosis._load_trial_params(exp_key, step=0, trials_folder=tmp_path)
+    assert params == {"length": 5, "extra": True}
     metadata = mitosis._disk.locate_trial_folder(exp_key, trials_folder=tmp_path)
     assert (metadata / "experiment").resolve().exists()
 
