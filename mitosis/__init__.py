@@ -157,7 +157,7 @@ class DBHandler(logging.Handler):
         self.log_table = Table(table_name, md, *cols)
         url = "sqlite:///" + str(self.db)
         self.eng = create_engine(url)
-        with self.eng.connect() as conn:
+        with self.eng.begin() as conn:
             if not inspection.inspect(conn).has_table(table_name):
                 md.create_all(conn)
 
@@ -182,7 +182,7 @@ class DBHandler(logging.Handler):
                         stmt = stmt.values({col: vals[i + 1]})
         else:
             raise ValueError("Cannot parse db message")
-        with self.eng.connect() as conn:
+        with self.eng.begin() as conn:
             conn.execute(stmt)
 
     def parse_record(self, msg: str) -> List[str]:
@@ -234,7 +234,7 @@ def _verify_variant_name(trial_db: Path, step: str, param: Parameter) -> None:
     ind_equal = df.loc[:, "name"] == param.var_name
     if ind_equal.sum() == 0:
         stmt = tb.insert().values({"name": param.var_name, "params": str(vals)})
-        with eng.connect() as conn:
+        with eng.begin() as conn:
             conn.execute(stmt)
     elif df.loc[ind_equal, "params"].iloc[0] != str(vals):
         raise RuntimeError(
