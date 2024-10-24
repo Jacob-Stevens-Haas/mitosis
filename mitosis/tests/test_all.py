@@ -148,6 +148,33 @@ def test_mock_experiment(mock_steps, tmp_path):
     assert (metadata / "experiment").resolve().exists()
 
 
+@pytest.fixture
+def nothing_step():
+    # fmt: off
+    return ExpStep(
+        "nothing",
+        mock_part1.do_nothing, "mitosis.tests.mock_part1:do_nothing",
+        mock_paper.lookup_default, "mitosis.tests.mock_paper:lookup_default",
+        None,
+        [],
+        []
+    )
+    # fmt: on
+
+
+@pytest.mark.clean
+def test_variant_redefinition_disallowed(nothing_step, tmp_path):
+    # GH 56
+    chg_param1 = Parameter("foo_a", "foo", "a", evaluate=False)
+    chg_param2 = Parameter("foo_a", "foo", "b", evaluate=False)
+    nothing_step.args.append(chg_param1)
+    mitosis.run([nothing_step], trials_folder=tmp_path)
+    nothing_step.args.pop(0)
+    nothing_step.args.append(chg_param2)
+    with pytest.raises(RuntimeError, match="stored with different values"):
+        mitosis.run([nothing_step], trials_folder=tmp_path)
+
+
 def test_load_results_order(tmp_path):
     exp_key = "test_results"
     (tmp_path / exp_key).mkdir()
@@ -224,17 +251,11 @@ def test_malfored_return_experiment(mock_steps, tmp_path):
 def test_load_toml():
     parent = Path(__file__).resolve().parent
     tomlfile = parent / "test_pyproject.toml"
-    result = _disk.load_mitosis_steps(tomlfile)
-    expected = {
-        "data": (
-            "mitosis.tests.mock_part1:Klass.gen_data",
-            "mitosis.tests.mock_paper:data_config",
-        ),
-        "fit_eval": (
-            "mitosis.tests.mock_part2:fit_and_score",
-            "mitosis.tests.mock_paper:meth_config",
-        ),
-    }
+    result = _disk.load_mitosis_steps(tomlfile)["nothing"]
+    expected = (
+        "mitosis.tests.mock_part1:do_nothing",
+        "mitosis.tests.mock_paper:lookup_default",
+    )
     assert result == expected
 
 

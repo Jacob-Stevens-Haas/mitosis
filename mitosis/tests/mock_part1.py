@@ -14,3 +14,8 @@ class Klass:
         getLogger(__name__).debug("This is run in debug mode only")
 
         return {"data": np.ones(length, dtype=np.float_), "extra": extra}
+
+
+def do_nothing(*args, **kwargs) -> dict[str, None]:
+    """An experiment step that accepts anything and produces nothing"""
+    return {"main": None}
