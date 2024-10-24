@@ -220,16 +220,16 @@ def _verify_variant_name(trial_db: Path, step: str, param: Parameter) -> None:
     eng = create_engine("sqlite:///" + str(trial_db))
     md = MetaData()
     tb = Table(f"{step}_variant_{param.arg_name}", md, *variant_types())
-    vals: Collection[Any]
+    vals: Collection
     if isinstance(param.vals, Mapping):
         vals = StrictlyReproduceableDict({k: v for k, v in sorted(param.vals.items())})
     elif isinstance(param.vals, Collection) and not isinstance(param.vals, str):
         try:
             vals = StrictlyReproduceableList(sorted(param.vals))
         except (ValueError, TypeError):
-            vals = param.vals
+            vals = str(param.vals)
     else:
-        vals = param.vals
+        vals = str(param.vals)
     df = pd.read_sql(select(tb), eng)
     ind_equal = df.loc[:, "name"] == param.var_name
     if ind_equal.sum() == 0:
