@@ -1,23 +1,18 @@
-from abc import ABCMeta
+from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field
-from types import ModuleType
-from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import ParamSpec
+from typing import TypedDict
+
+
+class ExpResults(TypedDict):
+    main: object
 
 
 P = ParamSpec("P")
-ExpRun = Callable[P, dict]
-
-
-class Experiment(ModuleType, metaclass=ABCMeta):
-    __name__: str
-    __file__: str
-    name: str
-    lookup_dict: dict[str, dict[str, Any]]
-    run: ExpRun
+ExpRun = Callable[P, ExpResults]
 
 
 @dataclass
@@ -33,7 +28,7 @@ class Parameter:
 
     var_name: str
     arg_name: str
-    vals: Any
+    vals: object
     # > 3.10 only: https://stackoverflow.com/a/49911616/534674
     evaluate: bool = field(default=False, kw_only=True)
 
@@ -42,7 +37,7 @@ class ExpStep(NamedTuple):
     name: str
     action: ExpRun
     action_ref: str
-    lookup: dict[str, Any]
+    lookup: Mapping[str, Mapping[str, object]]
     lookup_ref: str
     group: str | None
     args: list[Parameter]

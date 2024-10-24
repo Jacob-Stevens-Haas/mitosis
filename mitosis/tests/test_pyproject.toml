@@ -1,4 +1,7 @@
 [tool.mitosis.steps]
+nothing = [
+    "mitosis.tests.mock_part1:do_nothing",
+    "mitosis.tests.mock_paper:lookup_default"]
 data = [
     "mitosis.tests.mock_part1:Klass.gen_data",
     "mitosis.tests.mock_paper:data_config"

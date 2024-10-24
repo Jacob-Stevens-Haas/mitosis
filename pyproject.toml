@@ -43,7 +43,7 @@ dependencies = [
   "nbclient",
   "nbformat",
   "pandas<2.2",
-  "sqlalchemy",
+  "sqlalchemy>=1.4",
   "toml",
   "types-toml",
 ]
