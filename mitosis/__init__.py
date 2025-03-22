@@ -32,47 +32,26 @@ from typing import Sequence
 import dill  # type: ignore
 import nbformat
 import pandas as pd
-import sqlalchemy as sql
 from nbclient.exceptions import CellExecutionError
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers.files import FilesWriter
 from nbformat import NotebookNode
-from sqlalchemy import Column
 from sqlalchemy import create_engine
-from sqlalchemy import Float
-from sqlalchemy import insert
-from sqlalchemy import inspection
-from sqlalchemy import Integer
 from sqlalchemy import MetaData
 from sqlalchemy import select
-from sqlalchemy import String
 from sqlalchemy import Table
-from sqlalchemy import update
 
 from . import _disk
+from ._db import _init_variant_table
+from ._db import create_trials_db_eng
+from ._db import record_finish_in_db
+from ._db import record_start_in_db
+from ._db import variant_types
 from ._disk import locate_trial_folder
 from ._typing import ExpStep
 from ._typing import Parameter
 from ._version import version as __version__  # noqa: F401
-
-
-def trials_columns():
-    return [
-        Column("variant", String, primary_key=True),
-        Column("iteration", Integer, primary_key=True),
-        Column("commit", String, nullable=False),
-        Column("cpu_time", Float),
-        Column("results", String),
-        Column("filename", String),
-    ]
-
-
-def variant_types():
-    return [
-        Column("name", String, primary_key=True),
-        Column("params", String, unique=False),
-    ]
 
 
 def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
@@ -139,75 +118,12 @@ def _lookup_param(
         return Parameter(var_name, arg_name, stored, evaluate=False)
 
 
-class DBHandler(logging.Handler):
-    def __init__(
-        self,
-        filename: Path | str,
-        table_name: str,
-        cols: List[Column],
-        separator: str = "--",
-    ):
-        self.separator = separator
-        if Path(filename).is_absolute():
-            self.db = Path(filename)
-        else:
-            self.db = Path(__file__).resolve().parent / filename
-
-        md = MetaData()
-        self.log_table = Table(table_name, md, *cols)
-        url = "sqlite:///" + str(self.db)
-        self.eng = create_engine(url)
-        with self.eng.begin() as conn:
-            if not inspection.inspect(conn).has_table(table_name):
-                md.create_all(conn)
-
-        super().__init__()
-        self.addFilter(lambda rec: self.separator in rec.getMessage())
-
-    def emit(self, record: logging.LogRecord):
-        vals = self.parse_record(record.getMessage())
-        stmt: sql.Insert | sql.Update
-        if "insert" in vals[0]:
-            stmt = insert(self.log_table)
-            for i, col in enumerate(self.log_table.columns):
-                if vals[i + 1]:
-                    stmt = stmt.values({col: vals[i + 1]})
-        elif "update" in vals[0]:
-            stmt = update(self.log_table)
-            for i, col in enumerate(self.log_table.columns):
-                if col.primary_key:
-                    stmt = stmt.where(col == vals[i + 1])
-                else:
-                    if vals[i + 1]:
-                        stmt = stmt.values({col: vals[i + 1]})
-        else:
-            raise ValueError("Cannot parse db message")
-        with self.eng.begin() as conn:
-            conn.execute(stmt)
-
-    def parse_record(self, msg: str) -> List[str]:
-        return msg.split(self.separator)
-
-
-def _init_logger(trial_log: Path, table_name: str, debug: bool) -> tuple[Logger, Table]:
+def _init_logger() -> Logger:
     """Create a Trials logger with a database handler"""
     exp_logger = logging.Logger("experiments")
     exp_logger.setLevel(20)
     exp_logger.addHandler(logging.StreamHandler())
-    db_h = DBHandler(trial_log, table_name, trials_columns())
-    if len(exp_logger.handlers) < 2 and not debug:  # A weird error requires this
-        exp_logger.addHandler(db_h)
-    return exp_logger, db_h.log_table
-
-
-def _init_variant_table(trial_db: Path, step: str, param: Parameter) -> Table:
-    eng = create_engine("sqlite:///" + str(trial_db))
-    md = MetaData()
-    var_table = Table(f"{step}_variant_{param.arg_name}", md, *variant_types())
-    inspector = inspection.inspect(eng)
-    if not inspector.has_table(f"{step}_variant_{param.arg_name}"):
-        md.create_all(eng)
-    return var_table
+    return exp_logger
 
 
 def _verify_variant_name(trial_db: Path, step: str, param: Parameter) -> None:
@@ -338,9 +254,10 @@ def run(
             step.args.append(
                 Parameter(f"'{step.group}'", "group", step.group, evaluate=True)
             )
-    exp_logger, trials_table = _init_logger(trial_db, experiments_table, debug)
+    exp_logger = _init_logger()
+    eng, trials_tb = create_trials_db_eng(trial_db, experiments_table)
     iteration = (
-        0 if debug else _id_variant_iteration(trial_db, trials_table, master_variant)
+        0 if debug else _id_variant_iteration(trial_db, trials_tb, master_variant)
     )
     rand_key = "".join(choices(list("0123456789abcde"), k=6))
 
@@ -350,6 +267,8 @@ def run(
     exp_metadata_folder = _make_metadata_folder(trials_folder, rand_key)
     _write_freezefile(exp_metadata_folder)
 
+    if not debug:
+        record_start_in_db(trials_tb, eng, master_variant, iteration, commit)
     start_time = _log_start_experiment(
         exp_logger, master_variant, iteration, commit, debug
     )
@@ -361,9 +280,13 @@ def run(
     )
     _save_notebook(nb, out_filename, trials_folder, output_extension)
     (exp_metadata_folder / "experiment").symlink_to(trials_folder / out_filename)
-    _log_finish_experiment(
+    total_time = _log_finish_experiment(
         exp_logger, master_variant, iteration, commit, metric, out_filename, start_time
     )
+    if not debug:
+        record_finish_in_db(
+            trials_tb, eng, master_variant, iteration, metric, out_filename, total_time
+        )
 
     if exc is not None:
         raise exc
@@ -498,7 +421,7 @@ def cleanstr(obj):
             raise import_error
         return f"<{type(obj).__name__} {obj.__module__}.{obj.__qualname__}>"
     elif isinstance(obj, str):
-            return f"'{str(obj)}'"
+        return f"'{str(obj)}'"
     elif isinstance(obj, Mapping):
         return str(StrictlyReproduceableDict(**obj))
     elif isinstance(obj, Collection):
@@ -604,22 +527,24 @@ def _log_finish_experiment(
     metric: Optional[str],
     filename: str,
     start_time: float,
-) -> None:
+) -> float:
     utc_now = datetime.now(timezone.utc)
     exp_logger.info(
         "Finished experiment at time: "
         + utc_now.strftime("%Y-%m-%d %H:%M:%S %Z")
         + f".  Results: {metric}"
     )
+    total_time = process_time() - start_time
     exp_logger.info(
         "trial entry: update"
         + f"--{variant}"
         + f"--{iteration}"
         + f"--{commit}"
-        + f"--{process_time() - start_time}"
+        + f"--{total_time}"
         + f"--{metric}"
         + f"--{filename}"
     )
+    return total_time
 
 
 def _write_freezefile(folder: Path):
