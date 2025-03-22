@@ -220,27 +220,18 @@ def _verify_variant_name(trial_db: Path, step: str, param: Parameter) -> None:
     eng = create_engine("sqlite:///" + str(trial_db))
     md = MetaData()
     tb = Table(f"{step}_variant_{param.arg_name}", md, *variant_types())
-    vals: Collection
-    if isinstance(param.vals, Mapping):
-        vals = StrictlyReproduceableDict({k: v for k, v in sorted(param.vals.items())})
-    elif isinstance(param.vals, Collection) and not isinstance(param.vals, str):
-        try:
-            vals = StrictlyReproduceableList(sorted(param.vals))
-        except (ValueError, TypeError):
-            vals = str(param.vals)
-    else:
-        vals = str(param.vals)
+    val_str = cleanstr(param.vals)
     df = pd.read_sql(select(tb), eng)
     ind_equal = df.loc[:, "name"] == param.var_name
     if ind_equal.sum() == 0:
-        stmt = tb.insert().values({"name": param.var_name, "params": str(vals)})
+        stmt = tb.insert().values({"name": param.var_name, "params": val_str})
         with eng.begin() as conn:
             conn.execute(stmt)
-    elif df.loc[ind_equal, "params"].iloc[0] != str(vals):
+    elif df.loc[ind_equal, "params"].iloc[0] != val_str:
         raise RuntimeError(
             f"Parameter '{param.arg_name}' variant '{param.var_name}' "
             f"is stored with different values in {trial_db}, table '{tb}'. "
-            f"(Stored: {df.loc[ind_equal, 'params'].iloc[0]}), attmpeted: {str(vals)}."
+            f"(Stored: {df.loc[ind_equal, 'params'].iloc[0]}), attmpeted: {val_str}."
         )
     # Otherwise, parameter has already been registered and no conflicts
 
@@ -506,10 +497,15 @@ def cleanstr(obj):
         if not hasattr(mod, obj.__qualname__) or getattr(mod, obj.__qualname__) != obj:
             raise import_error
         return f"<{type(obj).__name__} {obj.__module__}.{obj.__qualname__}>"
-    else:
-        if isinstance(obj, str):
+    elif isinstance(obj, str):
             return f"'{str(obj)}'"
-        return str(obj)
+    elif isinstance(obj, Mapping):
+        return str(StrictlyReproduceableDict(**obj))
+    elif isinstance(obj, Collection):
+        return str(StrictlyReproduceableList(obj))
+    elif hasattr(obj, "__dict__"):
+        return f"{type(obj)}({StrictlyReproduceableDict(**obj.__dict__)})"
+    return str(obj)
 
 
 class StrictlyReproduceableDict(OrderedDict):
