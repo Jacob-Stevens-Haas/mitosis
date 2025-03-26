@@ -315,6 +315,7 @@ def _run_in_notebook(
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
         "inputs = None\n"
         "\n"
+        "formatter = logging.Formatter('%(asctime)s - %(message)s')\n"
         f"logger = logging.getLogger()\n"
         f"{logset_command}\n"
         f"logger.addHandler(logging.FileHandler('{str(logfile)}', delay=True))\n"  # noqa E501
