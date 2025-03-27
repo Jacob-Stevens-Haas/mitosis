@@ -32,9 +32,9 @@ from typing import Sequence
 import dill  # type: ignore
 import nbformat
 import pandas as pd
+from nbclient import NotebookClient
 from nbclient.exceptions import CellExecutionError
 from nbconvert.exporters import HTMLExporter
-from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers.files import FilesWriter
 from nbformat import NotebookNode
 from sqlalchemy import create_engine
@@ -365,7 +365,9 @@ def _run_in_notebook(
     nb["cells"] = [setup_cell] + step_loader_cells + step_runner_cells + [result_cell]
     with open(trials_folder / "source.py", "w") as fh:
         fh.write("".join(cell["source"] for cell in nb.cells))
-    ep = ExecutePreprocessor(timeout=-1)
+    client = NotebookClient(
+        nb, timeout=-1, resources={"metadata": {"path": trials_folder}}
+    )
 
     exception = None
     metrics = None
@@ -374,7 +376,7 @@ def _run_in_notebook(
     else:
         allowed = (CellExecutionError,)
     try:
-        ep.preprocess(nb, {"metadata": {"path": trials_folder}})
+        client.execute()
         metrics = nb["cells"][-1]["outputs"][0]["text"][:-1]  # last char is newline
     except allowed as exc:
         exception = exc
