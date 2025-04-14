@@ -30,12 +30,19 @@ Hypothesis: the maximum value of a sine wave is equal to its amplitude.
         err = np.abs(max(y) - amplitude)
         return {"main": err}
 
+
+*pyproject.toml*
+
+    [tool.mitosis.steps]
+    my_exp = ["sine_experiment:run", "sine_experiment:lookup_dict"]
+
+
 Commit these changes to a repository.  After installing sine_experiment as a python package, in CLI, run:
 
-    mitosis -m sine_experiment --param frequency=slow --eval-param amplitude=4
+    mitosis my_exp --param my_exp.frequency=slow --eval-param my_exp.amplitude=4
 
 Mitosis will run `sin_experiment.run()`, saving
-all output as an html file in the current directory.  It will also
+all output as an html file in a subdirectory.  It will also
 track the parameters and results.
 If you later change the variant named "slow" to set frequency=2, mitosis will
 raise a `RuntimeError`, preventing you from running a trial.  If you want to run
@@ -129,10 +136,11 @@ over all variants and trials.
 
 # API
 
-Mitosis is primarily intended as a command line program, so `mitosis --help` has the syntax documentation.   There is only one intentionally publi part of the api: `mitosis.load_trial_data()`.
+Mitosis is primarily intended as a command line program, so `mitosis --help` has the syntax documentation.
+There is only one intentionally public part of the api: `mitosis.load_trial_data()`.
 
-Here's a [pre-0.5.0 example](https://github.com/Jacob-Stevens-Haas/gen-experiments/blob/57877df35a9775db15719e16396fe8b06df5e3fa/run_exps.sh), when the `-m` flag was assumed.  For 0.5.0 usage, see the section on "More advanced usage"
-
+Here's a [pre-0.5.0 example](https://github.com/Jacob-Stevens-Haas/gen-experiments/blob/57877df35a9775db15719e16396fe8b06df5e3fa/run_exps.sh),
+when the `-m` flag was assumed.  For 0.5.0 usage, see the section on "More advanced usage"
 
 
 ## Untracked parameters
@@ -234,42 +242,3 @@ There are two obviously useful things to do after an experiment:
 * load the data with `load_trial_data()`
 
 Beyond this, the metadata mitosis keeps to disk is useful for troubleshooting or reproducing experiments, but no facility yet exists to browse or compare experiments.
-
-
-<!-- # Reproduceability Thoughts
-
-The goal of the package, experimental reproduceability, poses a few fun challenges.
-Here are my thoughts on reproduceable desiderata.
-
-## Raison d'être
-I designed `mitosis` for the primary purpose of stopping my confusion when I tried to
-reproduce plots for my advisor after a small code change.  Without an automatic
-record of the parameters in each run, I could not be sure whether the difference was due
-to the code change (committed or not), a mistake in setting parameters, or the effect
-of a new random seed.  `mitosis` prevents this confusion and many other faux-pas.
-
-
-There's also a broader reason for more rigor around reproduceability.
-While papers are published about parameterless methods or methods
-where the user only needs to specify a single parameter, that data that proves the
-method's efficacy comes from a heavily parametrized distribution (e.g. number of
-timesteps, noise level, type of noise, initial conditions, etc).  Building the method
-requires even more (e.g. network width, iteration and convergence controls).  Setting up
-the experiment requires more (e.g. number of trials, n_folds).  While most of these are
-reported in a paper, I have found it critical and difficult to keep track of these
-details when developing a method and convincing with collaborators.
-
-## Desiderata
-Not all we could wish for is possible.  `mitosis` aspires to items four to nine
-in the list below, making compromises along the way:
-
-1. No neutrinos or gamma rays messing with bits
-2. Same implementation of floating point arithmetic
-3. Using the same versions of binary libraries
-4. Using the same versions of python packages and python executable
-5. Same git commit of all experimental code
-6. Only run experiments with hashable parameters
-7. Ability to freeze/reproduce mutable arguments
-8. Ability to recreate arguments from either their `__repr__` string or their serialization
-9. Don't run experiments without specifying a hypothesis first
-10. For experiments that require randomness, only use a single, reproduceable generator. -->
