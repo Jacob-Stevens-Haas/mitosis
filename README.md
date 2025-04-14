@@ -50,6 +50,15 @@ raise a `RuntimeError`, preventing you from running a trial.  If you want to run
 something new.  Eval parameters, like "amplitude" in the example, behave differently.
 Rather than being specified by `lookup_dict`, they are evaluated directly.
 
+# API
+
+Mitosis is primarily intended as a command line program, so `mitosis --help` has the syntax documentation.
+There is only one intentionally public part of the api: `mitosis.load_trial_data()`.
+
+Here's a [pre-0.5.0 example](https://github.com/Jacob-Stevens-Haas/gen-experiments/blob/57877df35a9775db15719e16396fe8b06df5e3fa/run_exps.sh),
+when the `-m` flag was assumed.  For 0.5.0 and later usage, see the section on "More advanced usage" or just type `mitosis --help`
+
+
 # How it Works
 
 ## Behind the scenes:
@@ -133,14 +142,6 @@ Within `mitosis`, the trial is used to name the resulting html file and is store
 the "variant" and "iteration" columns in the experiment's sqlite database.
 the pseudorandom key that is attached to filename serves as an effective primary key
 over all variants and trials.
-
-# API
-
-Mitosis is primarily intended as a command line program, so `mitosis --help` has the syntax documentation.
-There is only one intentionally public part of the api: `mitosis.load_trial_data()`.
-
-Here's a [pre-0.5.0 example](https://github.com/Jacob-Stevens-Haas/gen-experiments/blob/57877df35a9775db15719e16396fe8b06df5e3fa/run_exps.sh),
-when the `-m` flag was assumed.  For 0.5.0 usage, see the section on "More advanced usage"
 
 
 ## Untracked parameters
