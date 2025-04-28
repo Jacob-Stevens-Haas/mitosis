@@ -72,9 +72,10 @@ def record_finish_in_db(
     total_time: float,
 ) -> Update:
     stmt = update(tb)
-    # primary keys
-    stmt = stmt.where(tb.columns.get("variant") == variant)
-    stmt = stmt.where(tb.columns.get("iteration") == iteration)
+
+    # primary keys... type ignore is only needed in mypy, not pyright
+    stmt = stmt.where(tb.columns.get("variant") == variant)  # type: ignore
+    stmt = stmt.where(tb.columns.get("iteration") == iteration)  # type: ignore
     stmt = stmt.values(
         {
             tb.columns.get("cpu_time"): total_time,

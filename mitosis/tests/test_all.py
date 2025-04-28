@@ -9,6 +9,7 @@ import nbclient.exceptions
 import pytest
 import mitosis
 from mitosis import _disk
+from mitosis import cleanstr
 from mitosis import unpack
 from mitosis import cleanstr
 from mitosis._typing import ExpStep
@@ -21,6 +22,7 @@ from mitosis.tests import mock_part2
 def mock_callable():
     pass
 
+
 class MockContainer:
     a: list[Callable]
 
@@ -32,9 +34,10 @@ def test_custom_container():
     fakeobj = MockContainer([mock_callable])
     assert "0x" not in cleanstr(fakeobj)
 
+
 def test_str_int_str():
-    assert "'" in cleanstr("1") or "\"" in cleanstr("1")
-    assert "'" not in cleanstr(1) and "\"" not in cleanstr(1)
+    assert "'" in cleanstr("1") or '"' in cleanstr("1")
+    assert "'" not in cleanstr(1) and '"' not in cleanstr(1)
 
 
 def test_reproduceable_dict():
