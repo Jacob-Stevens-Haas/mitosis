@@ -7,11 +7,11 @@ from typing import Callable
 
 import nbclient.exceptions
 import pytest
+
 import mitosis
 from mitosis import _disk
 from mitosis import cleanstr
 from mitosis import unpack
-from mitosis import cleanstr
 from mitosis._typing import ExpStep
 from mitosis._typing import Parameter
 from mitosis.tests import mock_paper
