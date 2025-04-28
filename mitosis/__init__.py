@@ -315,10 +315,12 @@ def _run_in_notebook(
         f"mpl.rcParams['savefig.dpi'] = {matplotlib_dpi}\n"
         "inputs = None\n"
         "\n"
-        f"logger = logging.getLogger()\n"
+        "logger = logging.getLogger()\n"
         f"{logset_command}\n"
-        f"logger.addHandler(logging.FileHandler('{str(logfile)}', delay=True))\n"  # noqa E501
-        f"logger.info('Initialized experiment logger')\n"
+        f"handler = logging.FileHandler('{str(logfile)}', delay=True)\n"
+        "handler.setFormatter(logging.Formatter('{levelname}:{asctime}:{module}:{lineno}:{message}', style='{'))\n"  # noqa E501
+        "logger.addHandler(handler)\n"
+        "logger.info('Initialized experiment logger')\n"
     )
     nb = nbformat.v4.new_notebook()
     setup_cell = nbformat.v4.new_code_cell(source=code)
