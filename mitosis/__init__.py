@@ -136,7 +136,10 @@ def _verify_variant_name(trial_db: Path, step: str, param: Parameter) -> None:
     eng = create_engine("sqlite:///" + str(trial_db))
     md = MetaData()
     tb = Table(f"{step}_variant_{param.arg_name}", md, *variant_types())
-    val_str = cleanstr(param.vals)
+    try:
+        val_str = cleanstr(param.vals)
+    except Exception:
+        raise RuntimeError(f"Unable to establish reproducible {param=}")
     df = pd.read_sql(select(tb), eng)
     ind_equal = df.loc[:, "name"] == param.var_name
     if ind_equal.sum() == 0:
