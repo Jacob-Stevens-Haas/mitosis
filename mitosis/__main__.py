@@ -170,7 +170,11 @@ def _process_cl_args(args: argparse.Namespace) -> dict[str, Any]:
             if not track:
                 untracked_args.append(arg_name)
         for track, arg_name, var_name in lps:
-            params.append(Parameter(var_name, arg_name, lookup[arg_name][var_name]))
+            p_dict = lookup[arg_name]
+            try:
+                params.append(Parameter(var_name, arg_name, p_dict[var_name]))
+            except KeyError:
+                raise KeyError(f"{var_name} missing from {arg_name} variants")
             if not track:
                 untracked_args.append(arg_name)
         return ExpStep(
