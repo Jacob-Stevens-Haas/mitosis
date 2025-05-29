@@ -5,18 +5,20 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 
-# `mitosis`
-_Manage (and reproduce) computational experiments_
+# Overview
+Mitosis is an experiment _runner_.
+It handles administrative tasks to decrease the mental overhead of collaboration:
+* Creating a CLI for your experiment
+* Recording commit information
+* Tracking parameterization, as well as parameter names (e.g. "low-noise")
+* Storing logs
+* Generating HTML visuals
+* Pickling result data
 
-Philosophically, an experiment is any time we run code with an aim to convince someone
-of something.  As code, an experiment is a callable, registered with the mitosis
-tool in pyproject.toml
-The value of mitosis is
-automatically recording commit and parameterization of each trial, as well as html
-visuals.  It helpfully refuses to run if the git repo is dirty (and thus unreproducible)
-or if parameter names have changed from a prior trial (e.g. the meaning of "low noise").
-The virtuous consequence of these checks and organization is reduced mental overhead of collaboration.
-
+The virtuous consequence of these checks and organization
+    is a faster workflow,
+    a more rigorous scientific method,
+    and reduced mental overhead of collaboration.
 
 ## Trivial Example
 
@@ -65,15 +67,23 @@ Rather than being specified by `lookup_dict`, they are evaluated directly.
 
 # Use
 
-Using mitosis involves registering experiments in pyproject.toml, enumerating parameter
-values in a lookup dictionary, running experiments on the command line, and browsing
-results.
+Philosophically, an experiment is any time we run code with an aim to convince someone
+    of something.
+As code, mitosis takes the approach that an experiment is a callable
+    (or a sequence of callables).
+
+Using mitosis involves
+    registering experiments in pyproject.toml,
+    naming interesting parameters,
+    running experiments on the command line,
+    and browsing results.
 
 ## Registration
 
-mitosis uses the `tool.mitosis.steps` table of pyproject.toml to learn what python
-callables are named experiment steps and where to lookup named parameter values.  It
-uses a syntax evocative of entry points.
+mitosis uses the `tool.mitosis.steps` table of pyproject.toml to learn
+    what python callables are experiment steps
+        and where to lookup named parameter values.
+It uses a syntax evocative of entry points:
 
     [tool.mitosis.steps]
     my_exp = ["sine_experiment:run", "sine_experiment:lookup_dict"]
@@ -81,7 +91,7 @@ uses a syntax evocative of entry points.
 Experiment steps must be callables with a dictionary return type.  The returned
 dictionary is required to have a key "main".  All but the final step in an experiment
 must also have a key "data" that gets passed to the first argument of the subsequent
-step.
+step.  If the key "metrics" is present, it will display prominently in the HTML output
 
 _Developer note: Building an experiment step static type at_ `mitosis._typing.ExpRun`
 
