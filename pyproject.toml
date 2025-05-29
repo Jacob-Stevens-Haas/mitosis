@@ -61,7 +61,8 @@ dev = [
   "pre-commit",
   "pytest-lazy-fixture",
   "sphinx",
-  "codecov"
+  "codecov",
+  "myst-parser",
 ]
 
 [project.urls]
