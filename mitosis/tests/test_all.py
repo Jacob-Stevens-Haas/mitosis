@@ -9,9 +9,12 @@ import nbclient.exceptions
 import pytest
 
 import mitosis
+from mitosis import _db
 from mitosis import _disk
-from mitosis import cleanstr
 from mitosis import unpack
+from mitosis._strings import cleanstr
+from mitosis._strings import StrictlyReproduceableDict
+from mitosis._strings import StrictlyReproduceableList
 from mitosis._typing import ExpStep
 from mitosis._typing import Parameter
 from mitosis.tests import mock_paper
@@ -41,36 +44,36 @@ def test_str_int_str():
 
 
 def test_reproduceable_dict():
-    mydict = mitosis.StrictlyReproduceableDict(**{"1": print})
+    mydict = StrictlyReproduceableDict(**{"1": print})
     assert str(mydict) == r"{'1': <builtin_function_or_method builtins.print>}"
 
 
 def test_reproduceable_list():
-    mylist = mitosis.StrictlyReproduceableList([1, print])
+    mylist = StrictlyReproduceableList([1, print])
     assert str(mylist) == r"[1, <builtin_function_or_method builtins.print>]"
 
 
 def test_unreproduceable_list():
     # test function in a local closure
     with pytest.raises(ValueError):
-        str(mitosis.StrictlyReproduceableList([1, lambda x: 1]))
+        str(StrictlyReproduceableList([1, lambda x: 1]))
 
 
 def test_reproduceable_list_of_strs():
-    mylist = mitosis.StrictlyReproduceableList(["a"])
+    mylist = StrictlyReproduceableList(["a"])
     assert str(mylist) == r"['a']"
 
 
 def test_reproduceable_dict_of_strs():
-    mylist = mitosis.StrictlyReproduceableDict({"a": "b"})
+    mylist = StrictlyReproduceableDict({"a": "b"})
     assert str(mylist) == r"{'a': 'b'}"
 
 
 def test_nested_reproduceable_classes():
-    mylist = mitosis.StrictlyReproduceableList([print])
-    mylist = mitosis.StrictlyReproduceableList([mylist])
-    mydict = mitosis.StrictlyReproduceableDict(a=mylist)
-    mydict = mitosis.StrictlyReproduceableDict(b=mydict)
+    mylist = StrictlyReproduceableList([print])
+    mylist = StrictlyReproduceableList([mylist])
+    mydict = StrictlyReproduceableDict(a=mylist)
+    mydict = StrictlyReproduceableDict(b=mydict)
     result = str(mydict)
     assert result == r"{'b': {'a': [[<builtin_function_or_method builtins.print>]]}}"
 
@@ -88,12 +91,12 @@ def test_unreproduceable_dict():
         pass
 
     with pytest.raises(ImportError):
-        str(mitosis.StrictlyReproduceableDict(**{"1": mock_local_f}))
+        str(StrictlyReproduceableDict(**{"1": mock_local_f}))
 
     # test function defined in __main__
     mock_global_f.__module__ = "__main__"
     with pytest.raises(ImportError):
-        str(mitosis.StrictlyReproduceableDict(**{"1": mock_global_f}))
+        str(StrictlyReproduceableDict(**{"1": mock_global_f}))
     mock_global_f.__module__ = __name__
 
     # test unimportable module
@@ -101,7 +104,7 @@ def test_unreproduceable_dict():
     setattr(newmod, "mock_global_f", mock_global_f)
     mock_global_f.__module__ = newmod.__name__
     with pytest.raises(ImportError):
-        str(mitosis.StrictlyReproduceableDict(**{"1": mock_global_f}))
+        str(StrictlyReproduceableDict(**{"1": mock_global_f}))
     mock_global_f.__module__ = __name__
 
     # test module missing name
@@ -109,13 +112,35 @@ def test_unreproduceable_dict():
     mock_global_f.__module__ = newmod.__name__
     sys.modules["_mockmod"] = newmod
     with pytest.raises(ImportError):
-        str(mitosis.StrictlyReproduceableDict(**{"1": mock_global_f}))
+        str(StrictlyReproduceableDict(**{"1": mock_global_f}))
     mock_global_f.__module__ = __name__
     sys.modules.pop("_mockmod")
 
     # test lambda function
     with pytest.raises(ValueError):
-        str(mitosis.StrictlyReproduceableDict(**{"1": lambda x: 1}))
+        str(StrictlyReproduceableDict(**{"1": lambda x: 1}))
+
+
+def test_id_variant_iteration(tmp_path):
+    variant_name = "low-noise"
+    eng, trials_tb = _db.create_trials_db_eng(tmp_path / "test.db", "trials_foo")
+    result = _db._id_variant_iteration(eng, trials_tb, variant_name)
+    expected = 0
+    assert result == expected
+    _db.record_start_in_db(trials_tb, eng, variant_name, 0, "non-commit")
+    result = _db._id_variant_iteration(eng, trials_tb, variant_name)
+    expected = 1
+    assert result == expected
+
+
+def test_verify_variant_name(fake_lookup_param, tmp_path):
+    # First call creates table, second call sees it exists and changes nothing
+    _db._init_variant_table(tmp_path / "temp.db", "foo", fake_lookup_param)
+    _db._verify_variant_name(tmp_path / "temp.db", "foo", fake_lookup_param)
+    _db._verify_variant_name(tmp_path / "temp.db", "foo", fake_lookup_param)
+    bad_param = Parameter(fake_lookup_param.var_name, fake_lookup_param.arg_name, None)
+    with pytest.raises(RuntimeError, match="Parameter"):
+        _db._verify_variant_name(tmp_path / "temp.db", "foo", bad_param)
 
 
 @pytest.fixture

@@ -2,7 +2,6 @@ import logging
 import os
 import pprint
 import sys
-from collections import OrderedDict
 from datetime import datetime
 from datetime import timezone
 from glob import glob
@@ -16,42 +15,31 @@ from pathlib import Path
 from random import choices
 from tempfile import NamedTemporaryFile
 from time import process_time
-from types import BuiltinFunctionType
-from types import BuiltinMethodType
-from types import FunctionType
-from types import MethodType
 from typing import Any
 from typing import cast
 from typing import Collection
-from typing import Hashable
-from typing import List
-from typing import Mapping
 from typing import Optional
 from typing import Sequence
 
 import dill  # type: ignore
 import nbformat
-import pandas as pd
 from nbclient.exceptions import CellExecutionError
 from nbconvert.exporters import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbconvert.writers.files import FilesWriter
 from nbformat import NotebookNode
-from sqlalchemy import create_engine
-from sqlalchemy import MetaData
-from sqlalchemy import select
-from sqlalchemy import Table
 
 from . import _disk
+from ._db import _id_variant_iteration
 from ._db import _init_variant_table
 from ._db import create_trials_db_eng
 from ._db import record_finish_in_db
 from ._db import record_start_in_db
-from ._db import variant_types
 from ._disk import locate_trial_folder
 from ._typing import ExpStep
 from ._typing import Parameter
 from ._version import version as __version__  # noqa: F401
+from mitosis._db import _verify_variant_name
 
 
 def load_trial_data(hexstr: str, *, trials_folder: Optional[Path | str] = None):
@@ -124,61 +112,6 @@ def _init_logger() -> Logger:
     exp_logger.setLevel(20)
     exp_logger.addHandler(logging.StreamHandler())
     return exp_logger
-
-
-def _verify_variant_name(trial_db: Path, step: str, param: Parameter) -> None:
-    """Check for conflicts between variant names in prior trials
-
-    Side effects:
-        - If trial_db does not exist, will create it
-        - If variant name has not been used before, will insert it
-    """
-    eng = create_engine("sqlite:///" + str(trial_db))
-    md = MetaData()
-    tb = Table(f"{step}_variant_{param.arg_name}", md, *variant_types())
-    try:
-        val_str = cleanstr(param.vals)
-    except Exception:
-        raise RuntimeError(f"Unable to establish reproducible {param=}")
-    df = pd.read_sql(select(tb), eng)
-    ind_equal = df.loc[:, "name"] == param.var_name
-    if ind_equal.sum() == 0:
-        stmt = tb.insert().values({"name": param.var_name, "params": val_str})
-        with eng.begin() as conn:
-            conn.execute(stmt)
-    elif df.loc[ind_equal, "params"].iloc[0] != val_str:
-        raise RuntimeError(
-            f"Parameter '{param.arg_name}' variant '{param.var_name}' "
-            f"is stored with different values in {trial_db}, table '{tb}'. "
-            f"(Stored: {df.loc[ind_equal, 'params'].iloc[0]}), attmpeted: {val_str}."
-        )
-    # Otherwise, parameter has already been registered and no conflicts
-
-
-def _id_variant_iteration(
-    trial_db: Path, trials_table: Table, master_variant: str
-) -> int:
-    """Identify the iteration for this exact variant of the trial
-
-    Args:
-        trial_log (path-like): location of the trial log database
-        trials_table (sqlalchemy.Table): the main record of each
-            trial/variant
-        var_table (sqlalchemy.Table): the lookup table for simulation
-            variants
-        sim_params (dict): parameters used in simulated experimental
-            data
-        id_table (sqlalchemy.Table): the lookup table for trial ids
-        prob_params (dict): Parameters used to create the problem/solver
-            in the experiment
-    """
-    eng = create_engine("sqlite:///" + str(trial_db))
-    stmt = select(trials_table).where(trials_table.c.variant == master_variant)
-    df = pd.read_sql(stmt, eng)
-    if df.empty:
-        return 1
-    else:
-        return df["iteration"].max() + 1
 
 
 def _lock_in_variant(
@@ -259,9 +192,7 @@ def run(
             )
     exp_logger = _init_logger()
     eng, trials_tb = create_trials_db_eng(trial_db, experiments_table)
-    iteration = (
-        0 if debug else _id_variant_iteration(trial_db, trials_tb, master_variant)
-    )
+    iteration = 0 if debug else _id_variant_iteration(eng, trials_tb, master_variant)
     rand_key = "".join(choices(list("0123456789abcde"), k=6))
 
     out_filename = _create_filename(
@@ -399,83 +330,6 @@ def _save_notebook(nb, filename, trials_folder, extension):
             nbformat.write(nb, f)
     else:
         raise ValueError
-
-
-def cleanstr(obj):
-    if (
-        isinstance(obj, FunctionType)
-        or isinstance(obj, MethodType)
-        or isinstance(obj, BuiltinFunctionType)
-        or isinstance(obj, BuiltinMethodType)
-    ):
-        if obj.__name__ == "<lambda>":
-            raise ValueError("Cannot use lambda functions in this context")
-        import_error = ImportError(
-            "Other modules must be able to import stored functions and modules:"
-            f"function named {obj.__qualname__} stored in {obj.__module__}"
-        )
-        if obj.__module__ == "__main__":
-            raise import_error
-        if "<locals>" in obj.__qualname__:
-            raise import_error
-        try:
-            mod = sys.modules[obj.__module__]
-        except KeyError:
-            raise import_error
-        if not hasattr(mod, obj.__qualname__) or getattr(mod, obj.__qualname__) != obj:
-            raise import_error
-        return f"<{type(obj).__name__} {obj.__module__}.{obj.__qualname__}>"
-    elif isinstance(obj, str):
-        return f"'{str(obj)}'"
-    elif isinstance(obj, Mapping):
-        return str(StrictlyReproduceableDict(**obj))
-    elif isinstance(obj, Collection):
-        return str(StrictlyReproduceableList(obj))
-    elif hasattr(obj, "__dict__"):
-        return f"{type(obj)}({StrictlyReproduceableDict(**obj.__dict__)})"
-    return str(obj)
-
-
-class StrictlyReproduceableDict(OrderedDict):
-    """A Dict that enforces reproduceable string representations
-
-    The standard function.__str__ includes a memory location, which means the
-    string representation of a function changes every time a program is run.
-    In order to provide some stability in logs indicating that a function was
-    run, the following dictionary will reject creating a string from functions
-    that are difficult or impossible to reproduce in experiments.  It will also
-    produce a reasonable string representation without the memory address for
-    functions that are reproduceable.
-    """
-
-    def __str__(self):
-        string = "{"
-        for k, v in self.items():
-            string += f"{cleanstr(k)}: "
-            if isinstance(v, Mapping):
-                string += str(StrictlyReproduceableDict(**v)) + ", "
-            elif isinstance(v, Collection) and not isinstance(v, Hashable):
-                string += str(StrictlyReproduceableList(v)) + ", "
-            else:
-                string += f"{cleanstr(v)}, "
-        else:
-            string = string[:-2] + "}"
-        return string
-
-
-class StrictlyReproduceableList(List):
-    def __str__(self):
-        string = "["
-        for item in iter(self):
-            if isinstance(item, Mapping):
-                string += str(StrictlyReproduceableDict(**item)) + ", "
-            elif isinstance(item, Collection) and not isinstance(item, Hashable):
-                string += str(StrictlyReproduceableList(item)) + ", "
-            else:
-                string += f"{cleanstr(item)}, "
-        else:
-            string = string[:-2] + "]"
-        return string
 
 
 def _make_metadata_folder(trials_folder: Path, rand_key: str) -> Path:
