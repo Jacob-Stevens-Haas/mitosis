@@ -12,7 +12,7 @@ class Klass:
         getLogger(__name__).debug("This is run in debug mode only")
 
         return {
-            "data": np.ones(length, dtype=np.float_),
+            "data": np.ones(length, dtype=float),
             "extra": extra,
             "main": None,
         }  # type: ignore
