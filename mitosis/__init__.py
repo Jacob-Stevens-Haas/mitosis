@@ -43,6 +43,7 @@ from sqlalchemy import select
 from sqlalchemy import Table
 
 from . import _disk
+from ._db import _id_variant_iteration
 from ._db import _init_variant_table
 from ._db import create_trials_db_eng
 from ._db import record_finish_in_db
@@ -155,32 +156,6 @@ def _verify_variant_name(trial_db: Path, step: str, param: Parameter) -> None:
     # Otherwise, parameter has already been registered and no conflicts
 
 
-def _id_variant_iteration(
-    trial_db: Path, trials_table: Table, master_variant: str
-) -> int:
-    """Identify the iteration for this exact variant of the trial
-
-    Args:
-        trial_log (path-like): location of the trial log database
-        trials_table (sqlalchemy.Table): the main record of each
-            trial/variant
-        var_table (sqlalchemy.Table): the lookup table for simulation
-            variants
-        sim_params (dict): parameters used in simulated experimental
-            data
-        id_table (sqlalchemy.Table): the lookup table for trial ids
-        prob_params (dict): Parameters used to create the problem/solver
-            in the experiment
-    """
-    eng = create_engine("sqlite:///" + str(trial_db))
-    stmt = select(trials_table).where(trials_table.c.variant == master_variant)
-    df = pd.read_sql(stmt, eng)
-    if df.empty:
-        return 1
-    else:
-        return df["iteration"].max() + 1
-
-
 def _lock_in_variant(
     step: str,
     params: Sequence[Parameter],
@@ -259,9 +234,7 @@ def run(
             )
     exp_logger = _init_logger()
     eng, trials_tb = create_trials_db_eng(trial_db, experiments_table)
-    iteration = (
-        0 if debug else _id_variant_iteration(trial_db, trials_tb, master_variant)
-    )
+    iteration = 0 if debug else _id_variant_iteration(eng, trials_tb, master_variant)
     rand_key = "".join(choices(list("0123456789abcde"), k=6))
 
     out_filename = _create_filename(

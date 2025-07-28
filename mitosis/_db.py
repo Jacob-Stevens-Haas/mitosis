@@ -10,6 +10,7 @@ from sqlalchemy import insert
 from sqlalchemy import inspection
 from sqlalchemy import Integer
 from sqlalchemy import MetaData
+from sqlalchemy import select
 from sqlalchemy import String
 from sqlalchemy import Table
 from sqlalchemy import Update
@@ -95,3 +96,23 @@ def _init_variant_table(trial_db: Path, step: str, param: Parameter) -> Table:
     if not inspector.has_table(f"{step}_variant_{param.arg_name}"):
         md.create_all(eng)
     return var_table
+
+
+def _id_variant_iteration(eng: Engine, trials_table: Table, master_variant: str) -> int:
+    """Identify the iteration for this exact variant of an experiment
+
+    Args:
+        trial_db: location of the trial log database
+        trials_table: the main record of each
+            trial/variant
+        master_variant: a string that uniquely identifies a combination of parameters.
+    """
+    stmt = select(trials_table.c.iteration).where(
+        trials_table.c.variant == master_variant
+    )
+    with eng.connect() as conn:
+        rows = list(conn.execute(stmt))
+    if len(rows) == 0:
+        return 0
+    else:
+        return max(row[0] for row in rows) + 1

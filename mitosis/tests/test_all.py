@@ -9,6 +9,7 @@ import nbclient.exceptions
 import pytest
 
 import mitosis
+from mitosis import _db
 from mitosis import _disk
 from mitosis import cleanstr
 from mitosis import unpack
@@ -116,6 +117,18 @@ def test_unreproduceable_dict():
     # test lambda function
     with pytest.raises(ValueError):
         str(mitosis.StrictlyReproduceableDict(**{"1": lambda x: 1}))
+
+
+def test_id_variant_iteration(tmp_path):
+    variant_name = "low-noise"
+    eng, trials_tb = _db.create_trials_db_eng(tmp_path / "test.db", "trials_foo")
+    result = _db._id_variant_iteration(eng, trials_tb, variant_name)
+    expected = 0
+    assert result == expected
+    _db.record_start_in_db(trials_tb, eng, variant_name, 0, "non-commit")
+    result = _db._id_variant_iteration(eng, trials_tb, variant_name)
+    expected = 1
+    assert result == expected
 
 
 @pytest.fixture
