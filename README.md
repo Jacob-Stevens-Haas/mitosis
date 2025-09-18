@@ -20,6 +20,9 @@ The virtuous consequence of these checks and organization
     a more rigorous scientific method,
     and reduced mental overhead of collaboration.
 
+[This article](https://jakestevens-haas.com/experimental-thoughts-2-desiderata.html)
+    describes some of the design goals of mitosis.
+
 ## Trivial Example
 
 Hypothesis: the maximum value of a sine wave is equal to its amplitude.
