@@ -17,7 +17,7 @@ jobs:
     - name: "Set up Python"
       uses: actions/setup-python@v3
       with:
-          python-version: "3.10"
+          python-version: "3.12"
     - name: run pre-commit
       run: |
         pip install pre-commit
@@ -30,7 +30,7 @@ jobs:
     - name: "Set up Python"
       uses: actions/setup-python@v3
       with:
-          python-version: "3.10"
+          python-version: "3.12"
     - name: Install doc dependencies
       run: |
         sudo apt-get update -y
@@ -49,7 +49,7 @@ jobs:
     - name: "Set up Python"
       uses: actions/setup-python@v3
       with:
-          python-version: "3.10"
+          python-version: "3.12"
     - name: install dependencies
       run: |
         pip install -e .[dev]
@@ -63,7 +63,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-          python-version: ["3.10", "3.11", "3.12"]
+          python-version: ["3.12", "3.13", "3.14"]
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}

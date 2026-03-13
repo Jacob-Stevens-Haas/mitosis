@@ -7,12 +7,16 @@ from typing import ParamSpec
 from typing import TypedDict
 
 
-class ExpResults(TypedDict):
+class ExpResult[T](TypedDict):
+    """Results from a SINDy ODE experiment."""
+
+    metrics: Mapping[str, float | None]
+    data: T
     main: object
 
 
 P = ParamSpec("P")
-ExpRun = Callable[P, ExpResults]
+ExpRun = Callable[P, ExpResult]
 
 
 @dataclass
